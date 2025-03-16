@@ -48,6 +48,78 @@ A comprehensive implementation of an SPL Token 2022 with advanced features inclu
 - **DEX Integration**: Jupiter API
 - **Automation**: Node-cron scheduling
 
+## Account Structure
+
+The implementation uses several types of accounts to manage different aspects of the token ecosystem:
+
+### Core Accounts
+
+1. **Mint Account**
+
+   - Primary token account representing the SPL Token 2022
+   - Manages token supply and metadata
+   - Contains transfer fee configuration
+   - Includes permanent delegate authority
+   - Has metadata pointer extension
+
+2. **Fee Collector Account**
+
+   - Collects 5% transfer fee from all token transactions
+   - Acts as withdrawal destination for collected fees
+   - Used for reward distribution
+   - Associated Token Account (ATA) holds actual token balances
+
+3. **Metadata Account**
+   - Stores token name, symbol, and URI
+   - Contains creator information
+   - Manages collection data
+   - Handles token usage parameters
+
+### User Accounts
+
+4. **User Token Accounts (ATAs)**
+
+   - Automatically created for each token holder
+   - Manages individual token balances
+   - Used for transfers and receiving rewards
+   - Created on-demand during first transfer
+
+5. **WBTC Token Accounts**
+   - Holds WBTC balances for distributions
+   - Created during swap operations
+   - Used for receiving WBTC rewards
+   - Automatically managed during distribution
+
+### Administrative Accounts
+
+6. **Initial Holder Account**
+
+   - Receives total initial supply during mint
+   - Serves as starting point for token distribution
+   - Verified for balance after initial mint
+
+7. **Permanent Delegate Account**
+   - Manages burn operations
+   - Has non-revocable permanent authority
+   - Controls token burning mechanism
+
+### Security Features
+
+- All authority accounts (mint, freeze) are revoked after initial setup
+- Token accounts are verified before operations
+- Batch processing implemented for distributions
+- Balance checks performed before operations
+- Automatic ATA creation for seamless user experience
+
+### Account Creation Flow
+
+1. Mint account creation with extensions
+2. Fee collector and token account setup
+3. Metadata account creation and linking
+4. Initial holder account funding
+5. On-demand user token account creation
+6. WBTC account creation during distribution
+
 ## Prerequisites
 
 - Node.js v16.0.0 or higher
