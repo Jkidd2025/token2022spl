@@ -1,0 +1,40 @@
+{
+  "name": "SPL Token 2022",
+  "symbol": "SPL22",
+  "description": "A comprehensive SPL Token 2022 implementation with advanced features including fee extensions, rewards, and burns",
+  "image": "", // Add your token image URI here
+  "external_url": "https://github.com/Jkidd2025/token2022spl",
+  "attributes": [
+    {
+      "trait_type": "Token Standard",
+      "value": "SPL-2022"
+    },
+    {
+      "trait_type": "Transfer Fee",
+      "value": "5%"
+    },
+    {
+      "trait_type": "Burn Mechanism",
+      "value": "Enabled"
+    },
+    {
+      "trait_type": "Rewards",
+      "value": "Enabled"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "", // Add your token image URI here
+        "type": "image/png"
+      }
+    ],
+    "category": "token",
+    "creators": [
+      {
+        "address": "", // Add creator wallet address
+        "share": 100
+      }
+    ]
+  }
+} 

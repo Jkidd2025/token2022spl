@@ -16,6 +16,8 @@ import {
 } from '@solana/spl-token';
 import * as dotenv from 'dotenv';
 import { createInitializeMetadataPointerInstruction } from '../utils/instructions';
+import { createTokenMetadata, DEFAULT_TOKEN_METADATA } from '../utils/metadata';
+import * as tokenMetadataConfig from '../config/metadata.json';
 
 dotenv.config();
 
@@ -41,15 +43,18 @@ async function createToken() {
     
     // Create mint account
     const mintKeypair = Keypair.generate();
+    const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 6;
+
+    // Create the mint with extensions
     const mint = await createMint(
       connection,
       wallet,
       wallet.publicKey,
       wallet.publicKey,
-      process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 9,
+      decimals,
       mintKeypair,
       {
-        extensionTypes: extensions,
+        commitment: 'confirmed',
       },
       TOKEN_2022_PROGRAM_ID
     );
@@ -61,7 +66,11 @@ async function createToken() {
       ? parseInt(process.env.TRANSFER_FEE_BASIS_POINTS)
       : 500; // 5%
     
-    const transaction = new Transaction().add(
+    // Create a transaction for initializing extensions
+    const initExtensionsTransaction = new Transaction();
+
+    // Add transfer fee extension
+    initExtensionsTransaction.add(
       createInitializeTransferFeeConfigInstruction(
         mint,
         wallet.publicKey,
@@ -73,7 +82,7 @@ async function createToken() {
     );
 
     // Add permanent delegate for burn mechanism
-    transaction.add(
+    initExtensionsTransaction.add(
       createInitializePermanentDelegateInstruction(
         mint,
         wallet.publicKey,
@@ -82,7 +91,7 @@ async function createToken() {
     );
 
     // Add metadata pointer
-    transaction.add(
+    initExtensionsTransaction.add(
       createInitializeMetadataPointerInstruction(
         mint,
         wallet.publicKey,
@@ -90,20 +99,43 @@ async function createToken() {
       )
     );
 
-    const signature = await sendAndConfirmTransaction(
+    const extensionsSignature = await sendAndConfirmTransaction(
       connection,
-      transaction,
+      initExtensionsTransaction,
       [wallet]
     );
 
-    console.log('Token initialized with extensions. Transaction:', signature);
+    console.log('Token extensions initialized. Transaction:', extensionsSignature);
+
+    // Create token metadata
+    const metadata = {
+      ...DEFAULT_TOKEN_METADATA,
+      ...tokenMetadataConfig,
+      creators: [
+        {
+          address: wallet.publicKey.toString(),
+          verified: true,
+          share: 100,
+        },
+      ],
+    };
+
+    const metadataResult = await createTokenMetadata(
+      connection,
+      wallet,
+      mint,
+      metadata
+    );
+
+    console.log('Token metadata created:', metadataResult);
     
     // After initial mint, we'll revoke authorities
     // This will be handled in a separate function to ensure the initial mint is successful
     
     return {
       mint: mint.toBase58(),
-      signature,
+      extensionsSignature,
+      metadata: metadataResult,
     };
 
   } catch (error) {
