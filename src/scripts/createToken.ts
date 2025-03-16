@@ -13,6 +13,8 @@ import {
   createMint,
   createInitializeTransferFeeConfigInstruction,
   createInitializePermanentDelegateInstruction,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 import * as dotenv from 'dotenv';
 import { createInitializeMetadataPointerInstruction } from '../utils/instructions';
@@ -29,6 +31,10 @@ async function createToken() {
   const wallet = Keypair.fromSecretKey(
     Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
   );
+
+  // Create a separate keypair for fee collection
+  const feeCollectorKeypair = Keypair.generate();
+  console.log('Fee Collector Address:', feeCollectorKeypair.publicKey.toString());
 
   // Define token extensions
   const extensions = [
@@ -61,20 +67,39 @@ async function createToken() {
 
     console.log('Token mint created:', mint.toBase58());
 
-    // Initialize transfer fee config for Raydium trading
+    // Get the fee collector's associated token account
+    const feeCollectorTokenAccount = await getAssociatedTokenAddress(
+      new PublicKey(mint),
+      feeCollectorKeypair.publicKey,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    // Create a transaction for initializing extensions and fee collector
+    const initExtensionsTransaction = new Transaction();
+
+    // Create the fee collector's token account
+    initExtensionsTransaction.add(
+      createAssociatedTokenAccountInstruction(
+        wallet.publicKey,
+        feeCollectorTokenAccount,
+        feeCollectorKeypair.publicKey,
+        new PublicKey(mint),
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+
+    // Initialize transfer fee config
     const feeBasisPoints = process.env.TRANSFER_FEE_BASIS_POINTS 
       ? parseInt(process.env.TRANSFER_FEE_BASIS_POINTS)
       : 500; // 5%
-    
-    // Create a transaction for initializing extensions
-    const initExtensionsTransaction = new Transaction();
 
-    // Add transfer fee extension
+    // Add transfer fee extension with fee collector as withdrawal destination
     initExtensionsTransaction.add(
       createInitializeTransferFeeConfigInstruction(
-        mint,
-        wallet.publicKey,
-        wallet.publicKey,
+        new PublicKey(mint),
+        wallet.publicKey, // fee authority (can change fee rate)
+        feeCollectorKeypair.publicKey, // withdrawal destination (receives fees)
         feeBasisPoints,
         BigInt(0), // Maximum fee
         TOKEN_2022_PROGRAM_ID
@@ -84,7 +109,7 @@ async function createToken() {
     // Add permanent delegate for burn mechanism
     initExtensionsTransaction.add(
       createInitializePermanentDelegateInstruction(
-        mint,
+        new PublicKey(mint),
         wallet.publicKey,
         TOKEN_2022_PROGRAM_ID
       )
@@ -93,7 +118,7 @@ async function createToken() {
     // Add metadata pointer
     initExtensionsTransaction.add(
       createInitializeMetadataPointerInstruction(
-        mint,
+        new PublicKey(mint),
         wallet.publicKey,
         TOKEN_2022_PROGRAM_ID
       )
@@ -102,10 +127,10 @@ async function createToken() {
     const extensionsSignature = await sendAndConfirmTransaction(
       connection,
       initExtensionsTransaction,
-      [wallet]
+      [wallet, feeCollectorKeypair]
     );
 
-    console.log('Token extensions initialized. Transaction:', extensionsSignature);
+    console.log('Token extensions and fee collector initialized. Transaction:', extensionsSignature);
 
     // Create token metadata
     const metadata = {
@@ -123,14 +148,22 @@ async function createToken() {
     const metadataResult = await createTokenMetadata(
       connection,
       wallet,
-      mint,
+      new PublicKey(mint),
       metadata
     );
 
     console.log('Token metadata created:', metadataResult);
     
+    // Save fee collector information
+    console.log('Important: Save these addresses for future reference:');
+    console.log('Fee Collector Address:', feeCollectorKeypair.publicKey.toString());
+    console.log('Fee Collector Secret Key:', JSON.stringify(Array.from(feeCollectorKeypair.secretKey)));
+    console.log('Fee Collector Token Account:', feeCollectorTokenAccount.toString());
+    
     return {
-      mint: mint.toBase58(),
+      mint: mint.toString(),
+      feeCollector: feeCollectorKeypair.publicKey.toString(),
+      feeCollectorTokenAccount: feeCollectorTokenAccount.toString(),
       extensionsSignature,
       metadata: metadataResult,
     };
@@ -143,8 +176,9 @@ async function createToken() {
 
 // If running directly
 if (require.main === module) {
-  createToken().then(() => {
+  createToken().then((result) => {
     console.log('Token creation completed');
+    console.log('Results:', result);
   }).catch((error) => {
     console.error('Token creation failed:', error);
     process.exit(1);

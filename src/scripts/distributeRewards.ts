@@ -15,7 +15,6 @@ import {
 } from '@solana/spl-token';
 import * as dotenv from 'dotenv';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 
 dotenv.config();
 
@@ -57,55 +56,9 @@ async function validateDistributions(distributions: RewardDistribution[]): Promi
   }
 }
 
-async function createDistributionInstructions(
-  connection: Connection,
-  wallet: Keypair,
-  mint: PublicKey,
-  sourceAccount: PublicKey,
-  distribution: RewardDistribution,
-  rewardAmount: bigint,
-  decimals: number
-): Promise<{
-  instructions: TransactionInstruction[];
-  destinationAccount: PublicKey;
-  distributionAmount: bigint;
-}> {
-  const destinationPublicKey = new PublicKey(distribution.address);
-  
-  // Get or create destination token account
-  const destinationAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    wallet,
-    mint,
-    destinationPublicKey,
-    false,
-    'confirmed',
-    undefined,
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  const distributionAmount = BigInt(
-    Math.floor(Number(rewardAmount) * (distribution.percentage / 100))
-  );
-
-  const transferInstruction = createTransferInstruction(
-    sourceAccount,
-    destinationAccount.address,
-    wallet.publicKey,
-    distributionAmount,
-    [],
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  return {
-    instructions: [transferInstruction],
-    destinationAccount: destinationAccount.address,
-    distributionAmount,
-  };
-}
-
 async function distributeRewards(
   mintAddress: string,
+  feeCollectorAddress: string,
   rewardAmount: string,
   distributions: RewardDistribution[]
 ): Promise<DistributionResult[]> {
@@ -119,12 +72,13 @@ async function distributeRewards(
   );
 
   const mint = new PublicKey(mintAddress);
+  const feeCollector = new PublicKey(feeCollectorAddress);
   
   try {
-    // Get the source token account (fee collector account)
+    // Get the fee collector's token account
     const sourceAccount = await getAssociatedTokenAddress(
       mint,
-      wallet.publicKey,
+      feeCollector,
       false,
       TOKEN_2022_PROGRAM_ID
     );
@@ -153,17 +107,34 @@ async function distributeRewards(
       const batchTransaction = new Transaction();
 
       for (const distribution of batch) {
-        const { instructions, destinationAccount, distributionAmount } = await createDistributionInstructions(
+        const destinationPublicKey = new PublicKey(distribution.address);
+        
+        // Get or create destination token account
+        const destinationAccount = await getOrCreateAssociatedTokenAccount(
           connection,
           wallet,
           mint,
-          sourceAccount,
-          distribution,
-          totalRewardAmount,
-          decimals
+          destinationPublicKey,
+          false,
+          'confirmed',
+          undefined,
+          TOKEN_2022_PROGRAM_ID
         );
 
-        batchTransaction.add(...instructions);
+        const distributionAmount = BigInt(
+          Math.floor(Number(totalRewardAmount) * (distribution.percentage / 100))
+        );
+
+        const transferInstruction = createTransferInstruction(
+          sourceAccount,
+          destinationAccount.address,
+          feeCollector,
+          distributionAmount,
+          [],
+          TOKEN_2022_PROGRAM_ID
+        );
+
+        batchTransaction.add(transferInstruction);
 
         results.push({
           address: distribution.address,
@@ -210,21 +181,20 @@ function loadDistributionsFromFile(filePath: string): RewardDistribution[] {
   }
 }
 
-// Example distribution if running directly
+// If running directly
 if (require.main === module) {
-  if (!process.argv[2] || !process.argv[3]) {
-    console.error('Usage: ts-node distributeRewards.ts <mint-address> <reward-amount> [distributions-file]');
+  if (!process.argv[2] || !process.argv[3] || !process.argv[4]) {
+    console.error('Usage: ts-node distributeRewards.ts <mint-address> <fee-collector-address> <reward-amount> [distributions-file]');
     process.exit(1);
   }
 
-  const mintAddress = process.argv[2];
-  const rewardAmount = process.argv[3];
+  const [mintAddress, feeCollectorAddress, rewardAmount] = process.argv.slice(2);
   
   let distributions: RewardDistribution[];
   
-  if (process.argv[4]) {
+  if (process.argv[5]) {
     // Load distributions from file
-    distributions = loadDistributionsFromFile(process.argv[4]);
+    distributions = loadDistributionsFromFile(process.argv[5]);
   } else {
     // Use example distributions
     distributions = [
@@ -235,7 +205,7 @@ if (require.main === module) {
     console.warn('Using example distribution list. In production, provide a JSON file with actual distributions.');
   }
 
-  distributeRewards(mintAddress, rewardAmount, distributions)
+  distributeRewards(mintAddress, feeCollectorAddress, rewardAmount, distributions)
     .then((results) => {
       console.log('Reward distribution completed');
       console.log('Distribution results:');
