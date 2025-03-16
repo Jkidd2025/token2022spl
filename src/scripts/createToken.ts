@@ -61,7 +61,7 @@ async function createToken() {
 
     console.log('Token mint created:', mint.toBase58());
 
-    // Initialize transfer fee config
+    // Initialize transfer fee config for Raydium trading
     const feeBasisPoints = process.env.TRANSFER_FEE_BASIS_POINTS 
       ? parseInt(process.env.TRANSFER_FEE_BASIS_POINTS)
       : 500; // 5%
@@ -129,9 +129,6 @@ async function createToken() {
 
     console.log('Token metadata created:', metadataResult);
     
-    // After initial mint, we'll revoke authorities
-    // This will be handled in a separate function to ensure the initial mint is successful
-    
     return {
       mint: mint.toBase58(),
       extensionsSignature,
@@ -144,9 +141,12 @@ async function createToken() {
   }
 }
 
-createToken().then(() => {
-  console.log('Token creation completed');
-}).catch((error) => {
-  console.error('Token creation failed:', error);
-  process.exit(1);
-}); 
+// If running directly
+if (require.main === module) {
+  createToken().then(() => {
+    console.log('Token creation completed');
+  }).catch((error) => {
+    console.error('Token creation failed:', error);
+    process.exit(1);
+  });
+} 
