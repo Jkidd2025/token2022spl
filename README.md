@@ -135,6 +135,126 @@ The implementation uses several types of accounts to manage different aspects of
 4. Verification of successful burn
 5. Transaction signatures stored for audit
 
+### Burn Process Implementation
+
+#### Interface Definition
+
+```typescript
+interface BurnResult {
+  transferToBurnAmount: string; // Original amount to burn
+  burnAmount: string; // Amount without decimals
+  actualBurnAmount: string; // Amount with decimals
+  transferSignature: string; // Transfer tx signature
+  burnSignature: string; // Burn tx signature
+  burnTokenAccount: string; // Burn account address
+  remainingBalance: string; // Remaining balance after burn
+}
+```
+
+#### Complete Burn Flow
+
+1. **Initialization Phase**
+
+   - Parse input parameters
+   - Set up Solana connection and wallet
+   - Get required account addresses
+   - Calculate burn amount with decimals
+
+2. **Pre-burn Validation**
+
+   - Verify burn account exists
+   - Check mint initialization
+   - Validate permanent delegate authority
+   - Log operation details
+
+3. **Transfer Phase**
+
+   ```typescript
+   // Transfer tokens to burn account
+   const transferTransaction = new Transaction().add(
+     createTransferInstruction(
+       sourceTokenAccount,
+       burnTokenAccount,
+       wallet.publicKey,
+       actualBurnAmount,
+       [],
+       TOKEN_2022_PROGRAM_ID
+     )
+   );
+   ```
+
+   - Transfer tokens to dedicated burn account
+   - Confirm transfer transaction
+   - Log transfer details and signature
+
+4. **Burn Phase**
+
+   ```typescript
+   // Execute burn transaction
+   const burnTransaction = new Transaction().add(
+     createBurnInstruction(
+       burnTokenAccount,
+       mint,
+       wallet.publicKey,
+       actualBurnAmount,
+       [],
+       TOKEN_2022_PROGRAM_ID
+     )
+   );
+   ```
+
+   - Validate burn parameters
+   - Execute burn transaction
+   - Verify burn success
+
+5. **Verification Phase**
+   - Check remaining balance
+   - Verify burn account state
+   - Return detailed results
+   - Store transaction signatures
+
+#### Security Features
+
+- Two-phase burn process for enhanced security
+- Transaction confirmation checks at each phase
+- Balance verification before and after operations
+- Permanent delegate authority validation
+- Comprehensive logging for audit trail
+- Robust error handling
+
+#### CLI Usage
+
+```bash
+ts-node burnTokens.ts <mint-address> <amount> <burn-account-address> [source-address] [decimals]
+```
+
+#### Example Implementation
+
+```typescript
+// Burn 1000 tokens
+await burnTokens(
+  'mint_address', // Token mint
+  '1000', // Amount to burn
+  'burn_account_address', // Dedicated burn account
+  'source_address', // Optional source
+  { decimals: 6 } // Optional config
+);
+```
+
+#### Return Value
+
+```typescript
+{
+  transferToBurnAmount: "1000",
+  burnAmount: "1000",
+  actualBurnAmount: "1000000000",  // With 6 decimals
+  transferSignature: "tx_signature_1",
+  burnSignature: "tx_signature_2",
+  burnTokenAccount: "burn_account_address",
+  remainingBalance: "0"
+}
+```
+
 ## Prerequisites
 
 - Node.js v16.0.0 or higher
