@@ -3,8 +3,7 @@ import {
   Keypair,
   PublicKey,
   Transaction,
-  SystemProgram,
-  LAMPORTS_PER_SOL,
+  VersionedTransaction,
 } from '@solana/web3.js';
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -12,16 +11,85 @@ import {
   createAssociatedTokenAccountInstruction,
   getAccount,
 } from '@solana/spl-token';
+import {
+  Liquidity,
+  LiquidityPoolKeys,
+  Token,
+  TokenAmount,
+} from '@raydium-io/raydium-sdk';
+import fetch from 'cross-fetch';
 
-// Raydium Program IDs and Pool IDs (these need to be updated with actual values)
-const RAYDIUM_PROGRAM_ID = new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
-const SOL_USDC_POOL = new PublicKey('58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2');
-const WBTC_USDC_POOL = new PublicKey('6GZrucFa9hAQW7yHiPtGeGjCywMGtgb2dEwrEd8UJqVZ');
+// Raydium Pool ID for your token to SOL
+const YOUR_TOKEN_SOL_POOL = new PublicKey('YOUR_POOL_ID_HERE');
+
+// Constants
+const NATIVE_SOL_MINT = 'So11111111111111111111111111111111111111112';
+const WBTC_MINT = '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh';
 
 export interface SwapResult {
   inputAmount: bigint;
   outputAmount: bigint;
   signature: string;
+}
+
+async function executeJupiterSwap(
+  connection: Connection,
+  wallet: Keypair,
+  inputMint: string,
+  outputMint: string,
+  amount: bigint,
+  slippageBps: number = 50
+): Promise<SwapResult> {
+  try {
+    // Get quote from Jupiter API
+    const quoteResponse = await (
+      await fetch(
+        `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}\
+&outputMint=${outputMint}\
+&amount=${amount.toString()}\
+&slippageBps=${slippageBps}`
+      )
+    ).json();
+
+    if (!quoteResponse || quoteResponse.error) {
+      throw new Error(`Failed to get quote: ${quoteResponse?.error || 'Unknown error'}`);
+    }
+
+    // Get serialized transactions for the swap
+    const { swapTransaction } = await (
+      await fetch('https://quote-api.jup.ag/v6/swap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quoteResponse,
+          userPublicKey: wallet.publicKey.toString(),
+          wrapAndUnwrapSol: true,
+          // Optional: Compute unit price for priority
+          computeUnitPriceMicroLamports: 1000,
+        }),
+      })
+    ).json();
+
+    // Deserialize and sign the transaction
+    const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+    const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+    transaction.sign([wallet]);
+
+    // Execute the transaction
+    const signature = await connection.sendTransaction(transaction);
+    await connection.confirmTransaction(signature, 'confirmed');
+
+    return {
+      inputAmount: amount,
+      outputAmount: BigInt(quoteResponse.outAmount),
+      signature,
+    };
+  } catch (error) {
+    console.error('Error executing Jupiter swap:', error);
+    throw error;
+  }
 }
 
 export async function swapTokensToSol(
@@ -31,37 +99,14 @@ export async function swapTokensToSol(
   amount: bigint
 ): Promise<SwapResult> {
   try {
-    // Get token account
-    const tokenAccount = await getAssociatedTokenAddress(
-      tokenMint,
-      wallet.publicKey,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-
-    // Create Raydium swap instruction
-    // Note: This is a placeholder. Actual implementation will need to use Raydium's SDK
-    const swapInstruction = await createRaydiumSwapInstruction(
+    console.log(`Swapping ${amount.toString()} tokens to SOL...`);
+    return await executeJupiterSwap(
       connection,
-      tokenAccount,
-      wallet.publicKey,
-      amount,
-      'token_to_sol'
+      wallet,
+      tokenMint.toString(),
+      NATIVE_SOL_MINT,
+      amount
     );
-
-    const transaction = new Transaction().add(swapInstruction);
-    
-    const signature = await connection.sendTransaction(transaction, [wallet]);
-    await connection.confirmTransaction(signature, 'confirmed');
-
-    // Get the output amount (this needs to be calculated based on actual swap result)
-    const outputAmount = amount * BigInt(LAMPORTS_PER_SOL) / BigInt(1000); // Example calculation
-
-    return {
-      inputAmount: amount,
-      outputAmount,
-      signature,
-    };
   } catch (error) {
     console.error('Error swapping tokens to SOL:', error);
     throw error;
@@ -74,67 +119,22 @@ export async function swapSolToWBTC(
   amount: bigint
 ): Promise<SwapResult> {
   try {
-    // Get or create WBTC token account
-    const wbtcMint = new PublicKey('3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh');
-    const wbtcAccount = await getAssociatedTokenAddress(
-      wbtcMint,
-      wallet.publicKey,
-      false,
-      TOKEN_2022_PROGRAM_ID
-    );
-
-    // Create WBTC account if it doesn't exist
-    const wbtcAccountInfo = await connection.getAccountInfo(wbtcAccount);
-    if (!wbtcAccountInfo) {
-      const createAccountIx = createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        wbtcAccount,
-        wallet.publicKey,
-        wbtcMint,
-        TOKEN_2022_PROGRAM_ID
-      );
-      const transaction = new Transaction().add(createAccountIx);
-      await connection.sendTransaction(transaction, [wallet]);
-    }
-
-    // Create Raydium swap instruction
-    const swapInstruction = await createRaydiumSwapInstruction(
+    console.log(`Swapping ${amount.toString()} SOL to WBTC...`);
+    return await executeJupiterSwap(
       connection,
-      wallet.publicKey,
-      wbtcAccount,
-      amount,
-      'sol_to_wbtc'
+      wallet,
+      NATIVE_SOL_MINT,
+      WBTC_MINT,
+      amount
     );
-
-    const transaction = new Transaction().add(swapInstruction);
-    
-    const signature = await connection.sendTransaction(transaction, [wallet]);
-    await connection.confirmTransaction(signature, 'confirmed');
-
-    // Get the output amount (this needs to be calculated based on actual swap result)
-    const outputAmount = amount * BigInt(100000) / BigInt(LAMPORTS_PER_SOL); // Example calculation
-
-    return {
-      inputAmount: amount,
-      outputAmount,
-      signature,
-    };
   } catch (error) {
     console.error('Error swapping SOL to WBTC:', error);
     throw error;
   }
 }
 
-// Placeholder for Raydium swap instruction creation
-// This needs to be implemented using Raydium's actual SDK
-async function createRaydiumSwapInstruction(
-  connection: Connection,
-  inputAccount: PublicKey,
-  outputAccount: PublicKey,
-  amount: bigint,
-  swapType: 'token_to_sol' | 'sol_to_wbtc'
-): Promise<any> {
-  // This is a placeholder. The actual implementation would use Raydium's SDK
-  // to create the proper swap instruction
-  throw new Error('Raydium swap instruction creation not implemented');
+// Helper function to get pool info (implement as needed)
+async function getPoolInfo(connection: Connection, poolId: PublicKey): Promise<LiquidityPoolKeys> {
+  // Implement pool info fetching logic
+  throw new Error('Pool info fetching not implemented');
 } 

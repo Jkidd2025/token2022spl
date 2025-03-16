@@ -1,9 +1,4 @@
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  Transaction,
-} from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import {
   TOKEN_2022_PROGRAM_ID,
   getAssociatedTokenAddress,
@@ -14,6 +9,7 @@ import {
 import * as dotenv from 'dotenv';
 import { getTokenHolders, calculateDistributionAmounts } from '../utils/tokenHolders';
 import { swapTokensToSol, swapSolToWBTC } from '../utils/swapUtils';
+import { checkAndTopUpSolBalance } from '../utils/solBalanceManager';
 
 dotenv.config();
 
@@ -23,7 +19,7 @@ interface DistributionResult {
   signature: string;
 }
 
-async function distributeWBTCToHolders(
+export async function distributeWBTCToHolders(
   connection: Connection,
   wallet: Keypair,
   baseTokenMint: PublicKey,
@@ -39,6 +35,11 @@ async function distributeWBTCToHolders(
       false,
       TOKEN_2022_PROGRAM_ID
     );
+    // Check and top up fee collector's SOL balance if needed
+    const topUpSignature = await checkAndTopUpSolBalance(connection, feeCollector, wallet);
+    if (topUpSignature) {
+      console.log('Topped up fee collector SOL balance. Transaction:', topUpSignature);
+    }
 
     // Get total collected fees
     const feeAccountInfo = await getAccount(
@@ -49,41 +50,42 @@ async function distributeWBTCToHolders(
     );
     const totalFees = feeAccountInfo.amount;
 
-    // 2. Calculate 50% of fees for WBTC distribution
+    // 2. Calculate 50% of fees for WBTC distribution and reserve
     const amountForWBTC = totalFees / BigInt(2);
+    const amountForReserve = totalFees - amountForWBTC;
 
-    // 3. Swap base token to SOL
+    // 3. Swap reserve portion to SOL for main wallet
+    console.log(`Swapping ${amountForReserve.toString()} base tokens to SOL for reserve...`);
+    const reserveSwapResult = await swapTokensToSol(
+      connection,
+      wallet,
+      baseTokenMint,
+      amountForReserve
+    );
+
+    console.log(
+      `Swapped reserve tokens to ${reserveSwapResult.outputAmount.toString()} SOL (received in main wallet)`
+    );
+
+    // 4. Swap remaining 50% to SOL for WBTC distribution
     console.log(`Swapping ${amountForWBTC.toString()} base tokens to SOL...`);
-    const solSwapResult = await swapTokensToSol(
-      connection,
-      wallet,
-      baseTokenMint,
-      amountForWBTC
-    );
+    const solSwapResult = await swapTokensToSol(connection, wallet, baseTokenMint, amountForWBTC);
 
-    // 4. Swap SOL to WBTC
+    // 5. Swap SOL to WBTC
     console.log(`Swapping ${solSwapResult.outputAmount.toString()} SOL to WBTC...`);
-    const wbtcSwapResult = await swapSolToWBTC(
-      connection,
-      wallet,
-      solSwapResult.outputAmount
-    );
+    const wbtcSwapResult = await swapSolToWBTC(connection, wallet, solSwapResult.outputAmount);
 
-    // 5. Get all token holders and their percentages
+    // 6. Get all token holders and their percentages
     console.log('Fetching token holders...');
-    const holders = await getTokenHolders(
-      connection,
-      baseTokenMint,
-      [feeCollectorAddress, ...excludeAddresses]
-    );
+    const holders = await getTokenHolders(connection, baseTokenMint, [
+      feeCollectorAddress,
+      ...excludeAddresses,
+    ]);
 
-    // 6. Calculate WBTC distribution amounts
-    const distributions = await calculateDistributionAmounts(
-      holders,
-      wbtcSwapResult.outputAmount
-    );
+    // 7. Calculate WBTC distribution amounts
+    const distributions = await calculateDistributionAmounts(holders, wbtcSwapResult.outputAmount);
 
-    // 7. Distribute WBTC to holders
+    // 8. Distribute WBTC to holders
     console.log('Distributing WBTC to holders...');
     const results: DistributionResult[] = [];
     const wbtcMint = new PublicKey('3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh');
@@ -102,7 +104,6 @@ async function distributeWBTCToHolders(
 
       for (const dist of batch) {
         const holderPublicKey = new PublicKey(dist.address);
-        
         // Get or create holder's WBTC account
         const destinationAccount = await getOrCreateAssociatedTokenAccount(
           connection,
@@ -129,7 +130,7 @@ async function distributeWBTCToHolders(
         results.push({
           holder: dist.address,
           amount: dist.amount.toString(),
-          signature: '', // Will be updated after transaction
+          signature: '',
         });
       }
 
@@ -145,9 +146,7 @@ async function distributeWBTCToHolders(
 
       console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} distributed. Transaction: ${signature}`);
     }
-
     return results;
-
   } catch (error) {
     console.error('Error in WBTC distribution:', error);
     throw error;
@@ -157,16 +156,15 @@ async function distributeWBTCToHolders(
 // If running directly
 if (require.main === module) {
   if (!process.argv[2] || !process.argv[3]) {
-    console.error('Usage: ts-node distributeWBTC.ts <base-token-mint> <fee-collector-address> [excluded-addresses...]');
+    console.error(
+      'Usage: ts-node distributeWBTC.ts <base-token-mint> <fee-collector-address> [excluded-addresses...]'
+    );
     process.exit(1);
   }
 
   const [mintAddress, feeCollectorAddress, ...excludeAddresses] = process.argv.slice(2);
-
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
-  const wallet = Keypair.fromSecretKey(
-    Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
-  );
+  const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
 
   distributeWBTCToHolders(
     connection,
@@ -185,4 +183,4 @@ if (require.main === module) {
       console.error('Distribution failed:', error.message);
       process.exit(1);
     });
-} 
+}

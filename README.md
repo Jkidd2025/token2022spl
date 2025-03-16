@@ -424,3 +424,74 @@ MINIMUM_FEE_AMOUNT=1000000
 RETRY_DELAY=15
 MAX_RETRIES=3
 ```
+
+### Fee Collector and Distribution System
+
+#### Fee Collection Flow
+
+1. **Fee Collection**
+
+   - Automatic 5% fee collection on all transfers
+   - Fees accumulate in dedicated fee collector account
+   - Automated SOL balance management for transaction fees
+
+2. **Fee Distribution**
+
+   - 50% converted to SOL (returned to main wallet)
+   - 50% converted to WBTC for holder distribution
+   - Automated distribution schedule (configurable)
+
+3. **Automated Management**
+   - 6-hour SOL balance checks
+   - Automatic top-ups when needed
+   - Configurable retry mechanism
+   - Error handling and logging
+
+#### Distribution Configuration
+
+```typescript
+interface AutomationConfig {
+  schedule: string; // Cron schedule expression
+  minimumFeeAmount: bigint; // Minimum fees to trigger distribution
+  retryDelay: number; // Delay in minutes before retry
+  maxRetries: number; // Maximum retry attempts
+}
+```
+
+#### Default Settings
+
+```typescript
+{
+  schedule: '0 0 * * *',     // Daily at midnight
+  minimumFeeAmount: 1000000, // Adjust based on decimals
+  retryDelay: 15,           // 15 minutes
+  maxRetries: 3             // 3 retries
+}
+```
+
+#### Swap Process
+
+1. **Reserve Portion (50%)**
+
+   - Base tokens → SOL
+   - Automatically retained in main wallet
+   - Used for operational costs
+
+2. **Distribution Portion (50%)**
+   - Base tokens → SOL → WBTC
+   - Distributed to token holders
+   - Proportional to holdings
+
+#### Security Features
+
+- Automated balance monitoring
+- Configurable retry mechanism
+- Transaction confirmation checks
+- Comprehensive error handling
+- Batch processing for distributions
+
+#### CLI Usage
+
+```bash
+ts-node automatedDistribution.ts <base-token-mint> <fee-collector-address> [excluded-addresses...]
+```

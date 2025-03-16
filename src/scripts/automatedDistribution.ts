@@ -1,22 +1,25 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+// @ts-expect-error missing type definitions for node-cron
 import * as cron from 'node-cron';
 import * as dotenv from 'dotenv';
 import { distributeWBTCToHolders } from './distributeWBTC';
+import { checkAndTopUpSolBalance } from '../utils/solBalanceManager';
 
 dotenv.config();
 
 interface AutomationConfig {
-  schedule: string;          // Cron schedule expression
-  minimumFeeAmount: bigint;  // Minimum amount of fees to trigger distribution
-  retryDelay: number;        // Delay in minutes before retrying after failure
-  maxRetries: number;        // Maximum number of retries per attempt
+  schedule: string; // Cron schedule expression
+  minimumFeeAmount: bigint; // Minimum amount of fees to trigger distribution
+  retryDelay: number; // Delay in minutes before retrying after failure
+  maxRetries: number; // Maximum number of retries per attempt
 }
 
 const DEFAULT_CONFIG: AutomationConfig = {
-  schedule: '0 0 * * *',     // Daily at midnight
+  schedule: '0 0 * * *', // Daily at midnight
   minimumFeeAmount: BigInt(1000000), // Adjust based on your token decimals
-  retryDelay: 15,            // 15 minutes
-  maxRetries: 3              // 3 retries
+  retryDelay: 15, // 15 minutes
+  maxRetries: 3, // 3 retries
 };
 
 class AutomatedDistributor {
@@ -46,7 +49,25 @@ class AutomatedDistributor {
   public start(): void {
     console.log('Starting automated WBTC distribution...');
     console.log('Schedule:', this.config.schedule);
-    
+
+    // Schedule SOL balance check every 6 hours
+    cron.schedule('0 */6 * * *', async () => {
+      try {
+        const feeCollector = new PublicKey(this.feeCollectorAddress);
+        const topUpSignature = await checkAndTopUpSolBalance(
+          this.connection,
+          feeCollector,
+          this.wallet
+        );
+
+        if (topUpSignature) {
+          console.log('Topped up fee collector SOL balance. Transaction:', topUpSignature);
+        }
+      } catch (error) {
+        console.error('Error checking SOL balance:', error);
+      }
+    });
+
     // Schedule the distribution task
     cron.schedule(this.config.schedule, async () => {
       if (this.isProcessing) {
@@ -71,7 +92,6 @@ class AutomatedDistributor {
 
   private async executeDistribution(): Promise<void> {
     console.log('Starting distribution cycle:', new Date().toISOString());
-    
     try {
       const result = await distributeWBTCToHolders(
         this.connection,
@@ -86,9 +106,8 @@ class AutomatedDistributor {
       console.log('Distribution completed successfully:', {
         runCount: this.runCount,
         lastRun: this.lastRunTime,
-        results: result
+        results: result,
       });
-
     } catch (error) {
       console.error('Error in distribution:', error);
       throw error;
@@ -98,28 +117,31 @@ class AutomatedDistributor {
   private async handleFailure(): Promise<void> {
     if (this.runCount < this.config.maxRetries) {
       console.log(`Scheduling retry in ${this.config.retryDelay} minutes...`);
-      setTimeout(async () => {
-        this.runCount++;
-        try {
-          await this.executeDistribution();
-        } catch (error) {
-          console.error(`Retry ${this.runCount} failed:`, error);
-          await this.handleFailure();
-        }
-      }, this.config.retryDelay * 60 * 1000);
+      setTimeout(
+        async () => {
+          this.runCount++;
+          try {
+            await this.executeDistribution();
+          } catch (error) {
+            console.error(`Retry ${this.runCount} failed:`, error);
+            await this.handleFailure();
+          }
+        },
+        this.config.retryDelay * 60 * 1000
+      );
     } else {
       console.error('Max retries reached. Manual intervention required.');
       // Here you could add notification logic (email, Discord, etc.)
     }
   }
 
-  public getStatus(): any {
+  public getStatus(): unknown {
     return {
       isProcessing: this.isProcessing,
       lastRunTime: this.lastRunTime,
       runCount: this.runCount,
       schedule: this.config.schedule,
-      config: this.config
+      config: this.config,
     };
   }
 }
@@ -132,14 +154,14 @@ if (require.main === module) {
   }
 
   if (!process.argv[2] || !process.argv[3]) {
-    console.error('Usage: ts-node automatedDistribution.ts <base-token-mint> <fee-collector-address>');
+    console.error(
+      'Usage: ts-node automatedDistribution.ts <base-token-mint> <fee-collector-address>'
+    );
     process.exit(1);
   }
 
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
-  const wallet = Keypair.fromSecretKey(
-    Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
-  );
+  const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
 
   const [baseTokenMint, feeCollectorAddress] = process.argv.slice(2);
 
@@ -148,7 +170,7 @@ if (require.main === module) {
     schedule: process.env.DISTRIBUTION_SCHEDULE || '0 0 * * *', // Daily at midnight
     minimumFeeAmount: BigInt(process.env.MINIMUM_FEE_AMOUNT || '1000000'),
     retryDelay: parseInt(process.env.RETRY_DELAY || '15'),
-    maxRetries: parseInt(process.env.MAX_RETRIES || '3')
+    maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
   };
 
   const distributor = new AutomatedDistributor(
@@ -169,4 +191,4 @@ if (require.main === module) {
     console.log('Shutting down automated distribution...');
     process.exit(0);
   });
-} 
+}
