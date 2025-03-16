@@ -16,6 +16,15 @@ A comprehensive implementation of an SPL Token 2022 with advanced features inclu
   - Automatic fee collection
   - Fee collector account management
 
+- **Token Burning**
+
+  - Dedicated burn account with initial allocation
+  - Controlled token burning mechanism
+  - Two-phase burn process (transfer then burn)
+  - Burn amount validation
+  - Balance verification
+  - Initial 10% supply allocation (configurable)
+
 - **WBTC Distribution**
 
   - Automated distribution of WBTC to token holders
@@ -28,17 +37,6 @@ A comprehensive implementation of an SPL Token 2022 with advanced features inclu
   - Base token reward distribution
   - Configurable reward percentages
   - Batch processing for efficiency
-
-- **Token Burning**
-
-  - Controlled token burning mechanism
-  - Burn amount validation
-  - Balance verification
-
-- **Security Features**
-  - Immutable settings (revoked after initial mint)
-  - Freeze Authority (revoked after initial mint)
-  - Mint Authority (revoked after initial mint)
 
 ## Technical Specifications
 
@@ -69,7 +67,15 @@ The implementation uses several types of accounts to manage different aspects of
    - Used for reward distribution
    - Associated Token Account (ATA) holds actual token balances
 
-3. **Metadata Account**
+3. **Burn Account**
+
+   - Dedicated account for token burning operations
+   - Receives initial allocation of 10% total supply (configurable)
+   - Acts as intermediate holder before burns
+   - Provides transparent burn tracking
+   - Controlled by permanent delegate authority
+
+4. **Metadata Account**
    - Stores token name, symbol, and URI
    - Contains creator information
    - Manages collection data
@@ -77,14 +83,14 @@ The implementation uses several types of accounts to manage different aspects of
 
 ### User Accounts
 
-4. **User Token Accounts (ATAs)**
+5. **User Token Accounts (ATAs)**
 
    - Automatically created for each token holder
    - Manages individual token balances
    - Used for transfers and receiving rewards
    - Created on-demand during first transfer
 
-5. **WBTC Token Accounts**
+6. **WBTC Token Accounts**
    - Holds WBTC balances for distributions
    - Created during swap operations
    - Used for receiving WBTC rewards
@@ -92,14 +98,14 @@ The implementation uses several types of accounts to manage different aspects of
 
 ### Administrative Accounts
 
-6. **Initial Holder Account**
+7. **Initial Holder Account**
 
-   - Receives total initial supply during mint
+   - Receives 90% of initial supply during mint (configurable)
    - Serves as starting point for token distribution
    - Verified for balance after initial mint
 
-7. **Permanent Delegate Account**
-   - Manages burn operations
+8. **Permanent Delegate Account**
+   - Manages burn operations through burn account
    - Has non-revocable permanent authority
    - Controls token burning mechanism
 
@@ -110,15 +116,24 @@ The implementation uses several types of accounts to manage different aspects of
 - Batch processing implemented for distributions
 - Balance checks performed before operations
 - Automatic ATA creation for seamless user experience
+- Two-phase burn process for enhanced security
 
 ### Account Creation Flow
 
 1. Mint account creation with extensions
-2. Fee collector and token account setup
+2. Fee collector and burn account setup
 3. Metadata account creation and linking
-4. Initial holder account funding
+4. Initial supply distribution (90/10 split between holder/burn)
 5. On-demand user token account creation
 6. WBTC account creation during distribution
+
+### Burn Process Flow
+
+1. Tokens are transferred to dedicated burn account
+2. Validation of burn account balance
+3. Execution of burn operation
+4. Verification of successful burn
+5. Transaction signatures stored for audit
 
 ## Prerequisites
 
