@@ -255,6 +255,141 @@ await burnTokens(
 }
 ```
 
+### Token Creation Implementation
+
+#### Token Extensions
+
+```typescript
+const extensions = [
+  ExtensionType.TransferFeeConfig, // Enable 5% transfer fee
+  ExtensionType.MetadataPointer, // Token metadata support
+  ExtensionType.PermanentDelegate, // For burn mechanism
+];
+```
+
+#### Complete Creation Flow
+
+1. **Initialization Phase**
+
+   - Set up Solana connection
+   - Initialize wallet from private key
+   - Generate fee collector keypair
+   - Generate burn account keypair
+   - Calculate mint space for extensions
+
+2. **Mint Creation**
+
+   ```typescript
+   const mint = await createMint(
+     connection,
+     wallet,
+     wallet.publicKey, // Mint authority
+     wallet.publicKey, // Freeze authority
+     decimals,
+     mintKeypair,
+     {
+       commitment: 'confirmed',
+     },
+     TOKEN_2022_PROGRAM_ID
+   );
+   ```
+
+   - Create mint account with specified decimals
+   - Set initial authorities
+   - Configure with TOKEN_2022_PROGRAM_ID
+
+3. **Account Setup**
+
+   - Create fee collector's associated token account
+   - Create burn account's associated token account
+   - Initialize accounts in single transaction
+
+4. **Extension Configuration**
+
+   ```typescript
+   // Transfer fee configuration
+   createInitializeTransferFeeConfigInstruction(
+     mint,
+     wallet.publicKey, // Fee authority
+     feeCollectorKeypair.publicKey, // Fee destination
+     feeBasisPoints, // 5% fee
+     BigInt(0), // Max fee
+     TOKEN_2022_PROGRAM_ID
+   );
+
+   // Permanent delegate for burns
+   createInitializePermanentDelegateInstruction(mint, wallet.publicKey, TOKEN_2022_PROGRAM_ID);
+   ```
+
+   - Set up transfer fee mechanism
+   - Configure permanent delegate
+   - Add metadata pointer
+
+5. **Metadata Creation**
+   ```typescript
+   const metadata = {
+     ...DEFAULT_TOKEN_METADATA,
+     ...tokenMetadataConfig,
+     creators: [
+       {
+         address: wallet.publicKey.toString(),
+         verified: true,
+         share: 100,
+       },
+     ],
+   };
+   ```
+   - Create token metadata
+   - Set creator information
+   - Configure token properties
+
+#### Security Features
+
+- Separate keypairs for fee collection and burns
+- Transaction confirmation checks
+- Error handling and validation
+- Secure key management
+- Comprehensive logging
+
+#### Return Value
+
+```typescript
+{
+  mint: string,                    // Token mint address
+  feeCollector: string,           // Fee collector address
+  feeCollectorTokenAccount: string, // Fee collector token account
+  burnAccount: string,            // Burn account address
+  burnTokenAccount: string,       // Burn token account
+  extensionsSignature: string,    // Extension setup transaction
+  metadata: MetadataResult,       // Token metadata result
+}
+```
+
+#### Important Addresses
+
+The script saves critical addresses for future reference:
+
+- Fee Collector Address and Secret Key
+- Fee Collector Token Account
+- Burn Account Address and Secret Key
+- Burn Token Account
+- Mint Address
+
+#### Usage
+
+```bash
+ts-node createToken.ts
+```
+
+Environment variables required:
+
+```env
+SOLANA_RPC_URL=your_rpc_url
+WALLET_PRIVATE_KEY=your_private_key
+TOKEN_DECIMALS=6
+TRANSFER_FEE_BASIS_POINTS=500  # 5%
+```
+
 ## Prerequisites
 
 - Node.js v16.0.0 or higher
