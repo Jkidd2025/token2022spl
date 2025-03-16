@@ -13,6 +13,8 @@
     "initial-mint": "ts-node src/scripts/initialMint.ts",
     "burn": "ts-node src/scripts/burnTokens.ts",
     "distribute-rewards": "ts-node src/scripts/distributeRewards.ts",
+    "distribute-wbtc": "ts-node src/scripts/distributeWBTC.ts",
+    "auto-distribute": "ts-node src/scripts/automatedDistribution.ts",
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -34,7 +36,8 @@
     "@solana/web3.js": "^1.98.0",
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.5",
@@ -63,4 +66,4 @@
   "engines": {
     "node": ">=16.0.0"
   }
-} 
+}
