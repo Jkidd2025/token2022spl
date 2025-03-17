@@ -16,8 +16,8 @@ interface AutomationConfig {
 }
 
 const DEFAULT_CONFIG: AutomationConfig = {
-  schedule: '0 0 * * *', // Daily at midnight
-  minimumFeeAmount: BigInt(1000000), // Adjust based on your token decimals
+  schedule: '*/30 * * * *', // Every 30 minutes
+  minimumFeeAmount: BigInt(20000), // Minimum amount to trigger distribution
   retryDelay: 15, // 15 minutes
   maxRetries: 3, // 3 retries
 };
@@ -50,8 +50,8 @@ class AutomatedDistributor {
     console.log('Starting automated WBTC distribution...');
     console.log('Schedule:', this.config.schedule);
 
-    // Schedule SOL balance check every 6 hours
-    cron.schedule('0 */6 * * *', async () => {
+    // Schedule SOL balance check every 30 minutes
+    cron.schedule('*/30 * * * *', async () => {
       try {
         const feeCollector = new PublicKey(this.feeCollectorAddress);
         const topUpSignature = await checkAndTopUpSolBalance(
