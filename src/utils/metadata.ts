@@ -33,6 +33,51 @@ export interface TokenMetadata {
   };
 }
 
+// Validate metadata URI and required fields
+function validateMetadata(metadata: TokenMetadata): void {
+  if (!metadata.name || metadata.name.length === 0) {
+    throw new Error('Token name is required');
+  }
+  if (!metadata.symbol || metadata.symbol.length === 0) {
+    throw new Error('Token symbol is required');
+  }
+  if (!metadata.uri || metadata.uri.length === 0) {
+    throw new Error('Metadata URI is required');
+  }
+  
+  // Validate GitHub URL format
+  if (!metadata.uri.startsWith('https://raw.githubusercontent.com/')) {
+    throw new Error('Metadata URI must be a raw GitHub URL');
+  }
+
+  // Validate creator shares
+  if (metadata.creators) {
+    const totalShares = metadata.creators.reduce((sum, creator) => sum + creator.share, 0);
+    if (totalShares !== 100) {
+      throw new Error('Creator shares must total 100');
+    }
+  }
+}
+
+export const DEFAULT_TOKEN_METADATA: TokenMetadata = {
+  name: "BPay",
+  symbol: "BPAY",
+  uri: "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/src/config/metadata.json",
+  sellerFeeBasisPoints: 500, // 5%
+  creators: [
+    {
+      address: "", // Will be set during token creation
+      verified: true,
+      share: 100,
+    },
+  ],
+  uses: {
+    useMethod: "burn",
+    remaining: 0,
+    total: 0,
+  },
+};
+
 export async function createTokenMetadata(
   connection: Connection,
   payer: Keypair,
@@ -40,6 +85,14 @@ export async function createTokenMetadata(
   metadata: TokenMetadata
 ) {
   try {
+    // Set the creator address to the payer's public key
+    if (metadata.creators && metadata.creators.length > 0) {
+      metadata.creators[0].address = payer.publicKey.toString();
+    }
+
+    // Validate metadata before proceeding
+    validateMetadata(metadata);
+
     const metadataAccount = await PublicKey.findProgramAddress(
       [
         Buffer.from('metadata'),
@@ -65,7 +118,7 @@ export async function createTokenMetadata(
           collection: metadata.collection || null,
           uses: metadata.uses || null,
         },
-        isMutable: false, // Set to false since we want immutable metadata
+        isMutable: true, // Set to true to allow future updates
       })
     );
 
@@ -84,23 +137,4 @@ export async function createTokenMetadata(
     console.error('Error creating token metadata:', error);
     throw error;
   }
-}
-
-export const DEFAULT_TOKEN_METADATA: TokenMetadata = {
-  name: "SPL Token 2022",
-  symbol: "SPL22",
-  uri: "", // Add your metadata URI here
-  sellerFeeBasisPoints: 500, // 5%
-  creators: [
-    {
-      address: "", // Add creator address
-      verified: true,
-      share: 100,
-    },
-  ],
-  uses: {
-    useMethod: "burn",
-    remaining: 0,
-    total: 0,
-  },
-}; 
+} 
