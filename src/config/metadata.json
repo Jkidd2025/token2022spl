@@ -1,7 +1,7 @@
 {
   "name": "BPay",
   "symbol": "BPAY",
-  "description": "The Next Generation WBTC Rewards on Solana",
+  "description": "The Next Generation WBTC Rewards on Solana - Token metadata is immutable after minting",
   "image": "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/assets/token-logo.png",
   "external_url": "https://github.com/Jkidd2025/token2022spl",
   "attributes": [
@@ -24,6 +24,10 @@
     {
       "trait_type": "Distribution Frequency",
       "value": "30 minutes"
+    },
+    {
+      "trait_type": "Metadata",
+      "value": "Immutable"
     }
   ],
   "properties": {
@@ -41,4 +45,4 @@
       }
     ]
   }
-} 
+}

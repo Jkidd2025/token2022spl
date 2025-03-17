@@ -6,6 +6,8 @@ import {
   SystemProgram,
   Transaction,
 } from '@solana/web3.js';
+import { getConfirmationStrategy, isLargeTransfer } from './transactionConfirmation';
+import { TransactionManager } from './transactionManager';
 
 // Minimum SOL balance to maintain for transaction fees
 const MIN_SOL_BALANCE = LAMPORTS_PER_SOL / 10; // 0.1 SOL
@@ -30,7 +32,7 @@ export async function checkAndTopUpSolBalance(
         throw new Error('Insufficient SOL in wallet for top-up');
       }
 
-      // Create and send top-up transaction
+      // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: wallet.publicKey,
@@ -39,11 +41,18 @@ export async function checkAndTopUpSolBalance(
         })
       );
 
-      const signature = await connection.sendTransaction(transaction, [wallet]);
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Initialize transaction manager
+      const transactionManager = new TransactionManager(connection);
+
+      // Execute transaction with simulation and retry logic
+      const result = await transactionManager.executeTransaction(
+        transaction,
+        [wallet],
+        'SMALL_TRANSFER'
+      );
 
       console.log(`Topped up fee collector with ${topUpAmount / LAMPORTS_PER_SOL} SOL`);
-      return signature;
+      return result.signature;
     }
 
     return null; // No top-up needed
@@ -66,7 +75,7 @@ export async function withdrawExcessSol(
     if (balance > TARGET_SOL_BALANCE) {
       const withdrawAmount = balance - TARGET_SOL_BALANCE;
 
-      // Create and send withdrawal transaction
+      // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: feeCollector.publicKey,
@@ -75,11 +84,21 @@ export async function withdrawExcessSol(
         })
       );
 
-      const signature = await connection.sendTransaction(transaction, [feeCollector]);
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Initialize transaction manager
+      const transactionManager = new TransactionManager(connection);
+
+      // Determine transaction type based on amount
+      const transactionType = withdrawAmount > LAMPORTS_PER_SOL ? 'LARGE_TRANSFER' : 'SMALL_TRANSFER';
+
+      // Execute transaction with simulation and retry logic
+      const result = await transactionManager.executeTransaction(
+        transaction,
+        [feeCollector],
+        transactionType
+      );
 
       console.log(`Withdrew ${withdrawAmount / LAMPORTS_PER_SOL} excess SOL from fee collector`);
-      return signature;
+      return result.signature;
     }
 
     return null; // No withdrawal needed

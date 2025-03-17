@@ -20,6 +20,7 @@ import * as dotenv from 'dotenv';
 import { createInitializeMetadataPointerInstruction } from '../utils/instructions';
 import { createTokenMetadata, DEFAULT_TOKEN_METADATA } from '../utils/metadata';
 import * as tokenMetadataConfig from '../config/metadata.json';
+import { TransactionManager } from '@solana/web3.js';
 
 dotenv.config();
 
@@ -124,13 +125,17 @@ async function createToken() {
       )
     );
 
-    const extensionsSignature = await sendAndConfirmTransaction(
-      connection,
+    // Initialize transaction manager
+    const transactionManager = new TransactionManager(connection);
+
+    // Execute transaction with simulation and retry logic
+    const result = await transactionManager.executeTransaction(
       initExtensionsTransaction,
-      [wallet, feeCollectorKeypair]
+      [wallet, feeCollectorKeypair],
+      'TOKEN_CREATION'
     );
 
-    console.log('Token extensions and fee collector initialized. Transaction:', extensionsSignature);
+    console.log('Token extensions and fee collector initialized. Transaction:', result.signature);
 
     // Create token metadata
     const metadata = {
@@ -164,7 +169,7 @@ async function createToken() {
       mint: mint.toString(),
       feeCollector: feeCollectorKeypair.publicKey.toString(),
       feeCollectorTokenAccount: feeCollectorTokenAccount.toString(),
-      extensionsSignature,
+      extensionsSignature: result.signature,
       metadata: metadataResult,
     };
 

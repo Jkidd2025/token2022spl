@@ -10,10 +10,15 @@ import * as dotenv from 'dotenv';
 import { getTokenHolders, calculateDistributionAmounts } from '../utils/tokenHolders';
 import { swapTokensToSol, swapSolToWBTC } from '../utils/swapUtils';
 import { checkAndTopUpSolBalance } from '../utils/solBalanceManager';
+import { getConfirmationStrategy, isLargeTransfer } from '../utils/transactionConfirmation';
+import { getWBTCAddress, validateTokenAddresses } from '../config/tokens';
 
 dotenv.config();
 
-interface DistributionResult {
+// Validate token addresses on startup
+validateTokenAddresses();
+
+export interface DistributionResult {
   holder: string;
   amount: string;
   signature: string;
@@ -88,7 +93,7 @@ export async function distributeWBTCToHolders(
     // 8. Distribute WBTC to holders
     console.log('Distributing WBTC to holders...');
     const results: DistributionResult[] = [];
-    const wbtcMint = new PublicKey('3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh');
+    const wbtcMint = getWBTCAddress();
     const sourceWBTCAccount = await getAssociatedTokenAddress(
       wbtcMint,
       wallet.publicKey,
@@ -101,6 +106,7 @@ export async function distributeWBTCToHolders(
     for (let i = 0; i < distributions.length; i += BATCH_SIZE) {
       const batch = distributions.slice(i, i + BATCH_SIZE);
       const batchTransaction = new Transaction();
+      let totalBatchAmount = BigInt(0);
 
       for (const dist of batch) {
         const holderPublicKey = new PublicKey(dist.address);
@@ -127,6 +133,7 @@ export async function distributeWBTCToHolders(
           )
         );
 
+        totalBatchAmount += dist.amount;
         results.push({
           holder: dist.address,
           amount: dist.amount.toString(),
@@ -134,17 +141,32 @@ export async function distributeWBTCToHolders(
         });
       }
 
-      const signature = await connection.sendTransaction(batchTransaction, [wallet]);
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Determine confirmation strategy based on total batch amount
+      const confirmationStrategy = isLargeTransfer(totalBatchAmount)
+        ? getConfirmationStrategy('LARGE_TRANSFER')
+        : getConfirmationStrategy('REGULAR_TRANSFER');
+
+      // Execute the batch
+      console.log(`Executing batch with ${confirmationStrategy.commitment} commitment...`);
+      const batchSignature = await connection.sendTransaction(batchTransaction, [wallet]);
+      await connection.confirmTransaction(
+        {
+          signature: batchSignature,
+          ...(await connection.getLatestBlockhash(confirmationStrategy)),
+        },
+        confirmationStrategy.commitment
+      );
 
       // Update signatures for this batch
       for (let j = i; j < i + batch.length; j++) {
         if (results[j]) {
-          results[j].signature = signature;
+          results[j].signature = batchSignature;
         }
       }
 
-      console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} distributed. Transaction: ${signature}`);
+      console.log(
+        `Completed batch distribution with ${confirmationStrategy.commitment} commitment. Transaction: ${batchSignature}`
+      );
     }
     return results;
   } catch (error) {
