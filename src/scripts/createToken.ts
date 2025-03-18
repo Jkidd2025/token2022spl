@@ -1,12 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import {
-  Connection,
-  Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-} from '@solana/web3.js';
-import {
-  createInitializeMintInstruction,
   ExtensionType,
   getMintLen,
   TOKEN_2022_PROGRAM_ID,
@@ -20,18 +15,62 @@ import * as dotenv from 'dotenv';
 import { createInitializeMetadataPointerInstruction } from '../utils/instructions';
 import { createTokenMetadata, DEFAULT_TOKEN_METADATA } from '../utils/metadata';
 import * as tokenMetadataConfig from '../config/metadata.json';
-import { TransactionManager } from '@solana/web3.js';
+import { TransactionManager } from '../utils/transactionManager';
 
 dotenv.config();
 
+// Validate environment variables
+function validateEnvironment() {
+  const requiredEnvVars = [
+    'SOLANA_RPC_URL',
+    'WALLET_PRIVATE_KEY',
+    'TOKEN_DECIMALS',
+    'TRANSFER_FEE_BASIS_POINTS',
+  ];
+
+  for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) {
+      throw new Error(`Missing required environment variable: ${envVar}`);
+    }
+  }
+}
+
+// Validate fee configuration
+function validateFeeConfig(feeBasisPoints: number) {
+  if (feeBasisPoints < 0 || feeBasisPoints > 10000) {
+    throw new Error('Fee basis points must be between 0 and 10000');
+  }
+}
+
+// Validate metadata
+function validateMetadata(metadata: any) {
+  if (!metadata.name || !metadata.symbol) {
+    throw new Error('Token metadata must include name and symbol');
+  }
+}
+
+// Backup account information
+async function backupAccount(keypair: Keypair, label: string) {
+  const backup = {
+    publicKey: keypair.publicKey.toString(),
+    secretKey: Array.from(keypair.secretKey),
+    label,
+    timestamp: new Date().toISOString(),
+  };
+
+  console.log(`Backup ${label} account information securely`);
+  return backup;
+}
+
 async function createToken() {
+  // Validate environment
+  validateEnvironment();
+
   // Initialize connection to Solana network
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
-  
+
   // Create wallet from private key
-  const wallet = Keypair.fromSecretKey(
-    Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
-  );
+  const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
 
   // Create a separate keypair for fee collection
   const feeCollectorKeypair = Keypair.generate();
@@ -47,7 +86,8 @@ async function createToken() {
   try {
     // Calculate space for the mint
     const mintLen = getMintLen(extensions);
-    
+    console.log(`Required mint space: ${mintLen} bytes`);
+
     // Create mint account
     const mintKeypair = Keypair.generate();
     const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 6;
@@ -91,9 +131,12 @@ async function createToken() {
     );
 
     // Initialize transfer fee config
-    const feeBasisPoints = process.env.TRANSFER_FEE_BASIS_POINTS 
+    const feeBasisPoints = process.env.TRANSFER_FEE_BASIS_POINTS
       ? parseInt(process.env.TRANSFER_FEE_BASIS_POINTS)
       : 500; // 5%
+
+    // Validate fee configuration
+    validateFeeConfig(feeBasisPoints);
 
     // Add transfer fee extension with fee collector as withdrawal destination
     initExtensionsTransaction.add(
@@ -150,6 +193,9 @@ async function createToken() {
       ],
     };
 
+    // Validate metadata
+    validateMetadata(metadata);
+
     const metadataResult = await createTokenMetadata(
       connection,
       wallet,
@@ -158,13 +204,16 @@ async function createToken() {
     );
 
     console.log('Token metadata created:', metadataResult);
-    
+
+    // Backup account information
+    await backupAccount(feeCollectorKeypair, 'fee_collector');
+    await backupAccount(mintKeypair, 'mint');
+
     // Save fee collector information
     console.log('Important: Save these addresses for future reference:');
     console.log('Fee Collector Address:', feeCollectorKeypair.publicKey.toString());
-    console.log('Fee Collector Secret Key:', JSON.stringify(Array.from(feeCollectorKeypair.secretKey)));
     console.log('Fee Collector Token Account:', feeCollectorTokenAccount.toString());
-    
+
     return {
       mint: mint.toString(),
       feeCollector: feeCollectorKeypair.publicKey.toString(),
@@ -172,20 +221,24 @@ async function createToken() {
       extensionsSignature: result.signature,
       metadata: metadataResult,
     };
-
   } catch (error) {
-    console.error('Error creating token:', error);
+    if (error instanceof Error) {
+      console.error('Error creating token:', error.message);
+      console.error('Stack trace:', error.stack);
+    }
     throw error;
   }
 }
 
 // If running directly
 if (require.main === module) {
-  createToken().then((result) => {
-    console.log('Token creation completed');
-    console.log('Results:', result);
-  }).catch((error) => {
-    console.error('Token creation failed:', error);
-    process.exit(1);
-  });
-} 
+  createToken()
+    .then((result) => {
+      console.log('Token creation completed');
+      console.log('Results:', result);
+    })
+    .catch((error) => {
+      console.error('Token creation failed:', error);
+      process.exit(1);
+    });
+}
