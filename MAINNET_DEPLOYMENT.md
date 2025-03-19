@@ -51,7 +51,6 @@ TRANSFER_FEE_BASIS_POINTS=500
 
 ### 3. Security Verification
 
-- [ ] Multi-sig setup for admin operations
 - [ ] Emergency pause functionality
 - [ ] Backup wallet configuration
 - [ ] Rate limiting parameters

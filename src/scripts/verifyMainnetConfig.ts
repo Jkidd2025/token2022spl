@@ -95,10 +95,10 @@ async function verifyMainnetConfiguration(): Promise<ConfigurationError[]> {
   }
 
   // 6. Security Configuration
-  if (process.env.MULTISIG_REQUIRED === 'true' && !process.env.EMERGENCY_WALLET) {
+  if (!process.env.EMERGENCY_WALLET) {
     errors.push({
       field: 'EMERGENCY_WALLET',
-      message: 'Emergency wallet is required when multi-sig is enabled',
+      message: 'Emergency wallet is required for security purposes',
       severity: 'ERROR',
     });
   }

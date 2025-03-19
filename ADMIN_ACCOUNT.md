@@ -17,7 +17,6 @@ This document outlines the administration account structure, security measures, 
 
 **Security Requirements:**
 
-- Multi-signature protection
 - Hardware wallet storage
 - Regular key rotation
 - Access logging
@@ -53,25 +52,15 @@ interface FeeCollectorConfig {
 **Security Considerations:**
 
 - Non-revocable nature
-- Multi-sig implementation
 - Operation limits
 - Monitoring requirements
 
 ## Security Implementation
 
-### 1. Multi-Signature System
+### 1. Authority Management
 
 ```typescript
-interface MultiSigConfig {
-  // Required number of signatures
-  requiredSignatures: number;
-
-  // List of authorized signers
-  signers: PublicKey[];
-
-  // Timelock period (in seconds)
-  timelock: number;
-
+interface AuthorityConfig {
   // Operation limits
   limits: {
     maxAmount: bigint;
@@ -84,285 +73,62 @@ interface MultiSigConfig {
 }
 ```
 
-### 2. Authority Management
+### 2. Access Control
 
-```typescript
-class AuthorityManager {
-  private connection: Connection;
-  private config: AuthorityConfig;
+- Role-based access control
+- Operation limits
+- Rate limiting
+- Emergency procedures
 
-  async validateOperation(
-    operation: AdminOperation,
-    signers: PublicKey[],
-    amount?: bigint
-  ): Promise<boolean> {
-    // Validate operation type
-    if (!this.isValidOperation(operation)) {
-      throw new Error('Invalid operation type');
-    }
+### 3. Monitoring and Logging
 
-    // Check signer permissions
-    if (!this.hasRequiredSignatures(signers)) {
-      throw new Error('Insufficient signatures');
-    }
+- Transaction monitoring
+- Access logging
+- Error tracking
+- Performance metrics
 
-    // Verify timelock period
-    if (!(await this.isTimelockSatisfied())) {
-      throw new Error('Timelock period not satisfied');
-    }
+### 4. Backup Procedures
 
-    // Check operation limits
-    if (amount && !this.isWithinLimits(operation, amount)) {
-      throw new Error('Operation exceeds limits');
-    }
-
-    return true;
-  }
-
-  private async isTimelockSatisfied(): Promise<boolean> {
-    // Implement timelock verification
-    return true;
-  }
-
-  private isWithinLimits(operation: AdminOperation, amount: bigint): boolean {
-    // Implement limit checking
-    return true;
-  }
-}
-```
-
-### 3. Access Control System
-
-```typescript
-interface AccessControlConfig {
-  // Operation types and their requirements
-  operations: {
-    [key: string]: {
-      requiredSignatures: number;
-      timelock: number;
-      limits: OperationLimits;
-    };
-  };
-
-  // Emergency procedures
-  emergency: {
-    pauseThreshold: bigint;
-    requiredApprovals: number;
-    recoveryProcedure: string;
-  };
-
-  // Monitoring settings
-  monitoring: {
-    alertThresholds: AlertConfig;
-    loggingLevel: 'debug' | 'info' | 'warn' | 'error';
-  };
-}
-```
-
-## Monitoring and Logging
-
-### 1. Admin Activity Tracking
-
-```typescript
-interface AdminEvent {
-  type: AdminOperation;
-  timestamp: number;
-  initiator: PublicKey;
-  signers: PublicKey[];
-  amount?: bigint;
-  status: 'success' | 'failed';
-  signature: string;
-  metadata: {
-    ip: string;
-    userAgent: string;
-    location?: string;
-  };
-}
-
-class AdminMonitor {
-  async trackOperation(event: AdminEvent): Promise<void> {
-    // Log operation details
-    await this.logEvent(event);
-
-    // Check for suspicious activity
-    await this.checkSuspiciousActivity(event);
-
-    // Update operation metrics
-    await this.updateMetrics(event);
-
-    // Trigger alerts if necessary
-    await this.checkAlerts(event);
-  }
-
-  private async checkSuspiciousActivity(event: AdminEvent): Promise<void> {
-    // Implement suspicious activity detection
-  }
-
-  private async updateMetrics(event: AdminEvent): Promise<void> {
-    // Update operation metrics
-  }
-
-  private async checkAlerts(event: AdminEvent): Promise<void> {
-    // Check and trigger alerts
-  }
-}
-```
-
-### 2. Alert System
-
-```typescript
-interface AlertConfig {
-  // Alert thresholds
-  thresholds: {
-    largeOperation: bigint;
-    failedAttempts: number;
-    unusualPattern: number;
-  };
-
-  // Notification channels
-  channels: {
-    email: string[];
-    slack?: string;
-    telegram?: string;
-  };
-
-  // Escalation levels
-  escalation: {
-    level1: string[];
-    level2: string[];
-    level3: string[];
-  };
-}
-```
-
-## Implementation Checklist
-
-### 1. Initial Setup
-
-- [ ] Create multi-sig admin wallet
-- [ ] Set up fee collector account
-- [ ] Configure permanent delegate
-- [ ] Initialize monitoring system
-- [ ] Set up alert channels
-
-### 2. Security Configuration
-
-- [ ] Implement multi-sig validation
-- [ ] Configure operation limits
-- [ ] Set up timelock periods
-- [ ] Establish emergency procedures
-- [ ] Configure access logging
-
-### 3. Monitoring Setup
-
-- [ ] Deploy activity tracking
-- [ ] Configure alert thresholds
-- [ ] Set up metric collection
-- [ ] Implement logging system
-- [ ] Test alert channels
-
-### 4. Testing Requirements
-
-- [ ] Test multi-sig operations
-- [ ] Validate emergency procedures
-- [ ] Check monitoring system
-- [ ] Verify logging
-- [ ] Test recovery procedures
-
-## Emergency Procedures
-
-### 1. Account Recovery
-
-```typescript
-interface RecoveryProcedure {
-  // Recovery triggers
-  triggers: {
-    compromised: boolean;
-    lostAccess: boolean;
-    systemFailure: boolean;
-  };
-
-  // Recovery steps
-  steps: {
-    verification: string[];
-    approval: string[];
-    execution: string[];
-  };
-
-  // Time limits
-  timeLimits: {
-    verification: number;
-    approval: number;
-    execution: number;
-  };
-}
-```
-
-### 2. Emergency Controls
-
-```typescript
-class EmergencyController {
-  async initiateEmergencyPause(
-    reason: string,
-    initiator: PublicKey,
-    signatures: PublicKey[]
-  ): Promise<void> {
-    // Validate emergency request
-    await this.validateEmergencyRequest(reason, initiator, signatures);
-
-    // Execute emergency pause
-    await this.executePause();
-
-    // Notify stakeholders
-    await this.notifyStakeholders(reason);
-
-    // Log emergency action
-    await this.logEmergencyAction(reason, initiator);
-  }
-
-  private async validateEmergencyRequest(
-    reason: string,
-    initiator: PublicKey,
-    signatures: PublicKey[]
-  ): Promise<void> {
-    // Implement validation logic
-  }
-}
-```
+- Regular wallet backups
+- Key rotation schedule
+- Recovery procedures
+- Emergency access protocols
 
 ## Best Practices
 
-### 1. Account Security
+1. **Key Management**
 
-- Use hardware wallets for key storage
-- Implement regular key rotation
-- Maintain secure backup procedures
-- Monitor for suspicious activity
-- Regular security audits
+   - Use hardware wallets
+   - Regular key rotation
+   - Secure key storage
+   - Access logging
 
-### 2. Operation Security
+2. **Operation Limits**
 
-- Always validate operations
-- Use secure confirmation strategies
-- Implement circuit breakers
-- Monitor operation patterns
-- Keep detailed operation logs
+   - Daily operation limits
+   - Transaction size limits
+   - Rate limiting
+   - Cooldown periods
 
-### 3. Emergency Response
+3. **Emergency Procedures**
 
-- Document emergency procedures
-- Train team on response protocols
-- Regular emergency drills
-- Maintain contact list
-- Test recovery procedures
+   - Emergency pause
+   - Recovery protocols
+   - Backup access
+   - Incident response
 
-### 4. Maintenance
+4. **Monitoring**
 
-- Regular security audits
-- Update security measures
-- Monitor system performance
-- Regular backup procedures
-- Review access logs
+   - Transaction monitoring
+   - Balance tracking
+   - Error alerts
+   - Performance metrics
+
+5. **Documentation**
+   - Operation logs
+   - Access records
+   - Incident reports
+   - Recovery procedures
 
 ## Risk Mitigation
 

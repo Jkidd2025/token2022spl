@@ -86,7 +86,6 @@ interface BurnValidationConfig {
   largeTransferThreshold: bigint;
   burnRateLimit: number;
   burnRateWindow: number; // in seconds
-  requiredApprovals: number;
   allowedBurnDestinations: PublicKey[];
 }
 
@@ -143,17 +142,7 @@ async function validateBurnParameters(
     );
   }
 
-  // 5. Multi-sig for Large Burns
-  if (amount > config.largeTransferThreshold) {
-    const approvals = await getTransactionApprovals(connection, mint, amount);
-    if (approvals < config.requiredApprovals) {
-      throw new Error(
-        `Large burn requires ${config.requiredApprovals} approvals. Current: ${approvals}`
-      );
-    }
-  }
-
-  // 6. Destination Validation
+  // 5. Destination Validation
   if (!config.allowedBurnDestinations.some((addr) => addr.equals(burnFromAddress))) {
     throw new Error('Invalid burn source address');
   }
