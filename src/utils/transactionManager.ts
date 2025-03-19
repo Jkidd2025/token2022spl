@@ -40,11 +40,11 @@ export class TransactionManager {
   private async simulateTransaction(transaction: Transaction): Promise<SimulatedTransactionResponse> {
     console.log('Simulating transaction...');
     const simulation = await this.connection.simulateTransaction(transaction);
-    
+
     if (simulation.value.err) {
       throw new Error(`Transaction simulation failed: ${simulation.value.err}`);
     }
-    
+
     console.log('Transaction simulation successful');
     return simulation;
   }
@@ -64,9 +64,9 @@ export class TransactionManager {
     while (retryCount < this.retryConfig.maxRetries) {
       try {
         console.log(`Attempting to send transaction (attempt ${retryCount + 1}/${this.retryConfig.maxRetries})...`);
-        
+
         const signature = await this.connection.sendTransaction(transaction, signers);
-        
+
         await this.connection.confirmTransaction(
           {
             signature,
@@ -80,9 +80,9 @@ export class TransactionManager {
       } catch (error) {
         lastError = error as Error;
         retryCount++;
-        
+
         if (retryCount < this.retryConfig.maxRetries) {
-          console.log(`Transaction failed, retrying in ${delay/1000} seconds...`);
+          console.log(`Transaction failed, retrying in ${delay / 1000} seconds...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           delay *= this.retryConfig.backoffFactor;
         }

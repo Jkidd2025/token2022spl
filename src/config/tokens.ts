@@ -9,7 +9,9 @@ export const TOKEN_ADDRESSES = {
 // Helper function to get WBTC mint address
 export function getWBTCAddress(): PublicKey {
   if (!TOKEN_ADDRESSES.WBTC) {
-    throw new Error('WBTC mint address not configured. Please set WBTC_MINT_ADDRESS environment variable.');
+    throw new Error(
+      'WBTC mint address not configured. Please set WBTC_MINT_ADDRESS environment variable.'
+    );
   }
   return new PublicKey(TOKEN_ADDRESSES.WBTC);
 }
@@ -24,4 +26,4 @@ export function validateTokenAddresses(): void {
   } catch (error) {
     throw new Error('Invalid WBTC mint address format');
   }
-} 
+}

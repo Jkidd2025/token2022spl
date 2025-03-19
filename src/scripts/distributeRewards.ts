@@ -39,7 +39,9 @@ async function validateDistributions(distributions: RewardDistribution[]): Promi
   // Validate total percentage equals 100
   const totalPercentage = distributions.reduce((sum, dist) => sum + dist.percentage, 0);
   if (totalPercentage !== 100) {
-    throw new Error(`Total distribution percentage must equal 100. Current total: ${totalPercentage}`);
+    throw new Error(
+      `Total distribution percentage must equal 100. Current total: ${totalPercentage}`
+    );
   }
 
   // Validate individual distributions
@@ -66,14 +68,12 @@ async function distributeRewards(
   await validateDistributions(distributions);
 
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
-  
-  const wallet = Keypair.fromSecretKey(
-    Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
-  );
+
+  const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
 
   const mint = new PublicKey(mintAddress);
   const feeCollector = new PublicKey(feeCollectorAddress);
-  
+
   try {
     // Get the fee collector's token account
     const sourceAccount = await getAssociatedTokenAddress(
@@ -95,7 +95,9 @@ async function distributeRewards(
     const totalRewardAmount = BigInt(rewardAmount) * BigInt(10 ** decimals);
 
     if (sourceAccountInfo.amount < totalRewardAmount) {
-      throw new Error(`Insufficient tokens for reward distribution. Required: ${totalRewardAmount}, Available: ${sourceAccountInfo.amount}`);
+      throw new Error(
+        `Insufficient tokens for reward distribution. Required: ${totalRewardAmount}, Available: ${sourceAccountInfo.amount}`
+      );
     }
 
     const results: DistributionResult[] = [];
@@ -108,7 +110,7 @@ async function distributeRewards(
 
       for (const distribution of batch) {
         const destinationPublicKey = new PublicKey(distribution.address);
-        
+
         // Get or create destination token account
         const destinationAccount = await getOrCreateAssociatedTokenAccount(
           connection,
@@ -144,11 +146,7 @@ async function distributeRewards(
         });
       }
 
-      const signature = await sendAndConfirmTransaction(
-        connection,
-        batchTransaction,
-        [wallet]
-      );
+      const signature = await sendAndConfirmTransaction(connection, batchTransaction, [wallet]);
 
       // Update signatures for this batch
       for (let j = i; j < i + batch.length; j++) {
@@ -157,13 +155,10 @@ async function distributeRewards(
         }
       }
 
-      console.log(
-        `Batch ${Math.floor(i / BATCH_SIZE) + 1} distributed. Transaction: ${signature}`
-      );
+      console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} distributed. Transaction: ${signature}`);
     }
 
     return results;
-
   } catch (error) {
     console.error('Error distributing rewards:', error);
     throw error;
@@ -184,25 +179,29 @@ function loadDistributionsFromFile(filePath: string): RewardDistribution[] {
 // If running directly
 if (require.main === module) {
   if (!process.argv[2] || !process.argv[3] || !process.argv[4]) {
-    console.error('Usage: ts-node distributeRewards.ts <mint-address> <fee-collector-address> <reward-amount> [distributions-file]');
+    console.error(
+      'Usage: ts-node distributeRewards.ts <mint-address> <fee-collector-address> <reward-amount> [distributions-file]'
+    );
     process.exit(1);
   }
 
   const [mintAddress, feeCollectorAddress, rewardAmount] = process.argv.slice(2);
-  
+
   let distributions: RewardDistribution[];
-  
+
   if (process.argv[5]) {
     // Load distributions from file
     distributions = loadDistributionsFromFile(process.argv[5]);
   } else {
     // Use example distributions
     distributions = [
-      { address: "EXAMPLE_ADDRESS_1", percentage: 50 },
-      { address: "EXAMPLE_ADDRESS_2", percentage: 30 },
-      { address: "EXAMPLE_ADDRESS_3", percentage: 20 },
+      { address: 'EXAMPLE_ADDRESS_1', percentage: 50 },
+      { address: 'EXAMPLE_ADDRESS_2', percentage: 30 },
+      { address: 'EXAMPLE_ADDRESS_3', percentage: 20 },
     ];
-    console.warn('Using example distribution list. In production, provide a JSON file with actual distributions.');
+    console.warn(
+      'Using example distribution list. In production, provide a JSON file with actual distributions.'
+    );
   }
 
   distributeRewards(mintAddress, feeCollectorAddress, rewardAmount, distributions)
@@ -216,4 +215,4 @@ if (require.main === module) {
       console.error('Distribution failed:', error.message);
       process.exit(1);
     });
-} 
+}

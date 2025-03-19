@@ -34,12 +34,7 @@ async function validateMintAccount(
 ): Promise<PublicKey> {
   try {
     const mint = new PublicKey(mintAddress);
-    const mintInfo = await getMint(
-      connection,
-      mint,
-      'confirmed',
-      TOKEN_2022_PROGRAM_ID
-    );
+    const mintInfo = await getMint(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
 
     // Verify mint authority
     if (!mintInfo.mintAuthority?.equals(wallet.publicKey)) {
@@ -68,10 +63,8 @@ async function performInitialMintAndRevoke(
   }
 ): Promise<InitialMintResult> {
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
-  
-  const wallet = Keypair.fromSecretKey(
-    Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
-  );
+
+  const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
 
   // Validate mint account
   const mint = await validateMintAccount(connection, mintAddress, wallet);
@@ -98,15 +91,22 @@ async function performInitialMintAndRevoke(
     );
 
     if (tokenAccountInfo.amount > BigInt(0)) {
-      throw new Error('Token account already has a balance. Initial mint can only be performed once.');
+      throw new Error(
+        'Token account already has a balance. Initial mint can only be performed once.'
+      );
     }
 
     // Prepare initial mint transaction
-    const initialSupply = BigInt(options?.initialSupply || process.env.INITIAL_SUPPLY || '1000000000');
-    const decimals = options?.decimals || process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS!) : 6;
+    const initialSupply = BigInt(
+      options?.initialSupply || process.env.INITIAL_SUPPLY || '1000000000'
+    );
+    const decimals =
+      options?.decimals || process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS!) : 6;
     const actualSupply = initialSupply * BigInt(10 ** decimals);
 
-    console.log(`Preparing to mint ${initialSupply.toString()} tokens (${actualSupply.toString()} with decimals)`);
+    console.log(
+      `Preparing to mint ${initialSupply.toString()} tokens (${actualSupply.toString()} with decimals)`
+    );
 
     const mintTx = new Transaction().add(
       createMintToInstruction(
@@ -119,15 +119,10 @@ async function performInitialMintAndRevoke(
       )
     );
 
-    const mintSignature = await sendAndConfirmTransaction(
-      connection,
-      mintTx,
-      [wallet],
-      {
-        commitment: 'confirmed',
-        preflightCommitment: 'confirmed',
-      }
-    );
+    const mintSignature = await sendAndConfirmTransaction(connection, mintTx, [wallet], {
+      commitment: 'confirmed',
+      preflightCommitment: 'confirmed',
+    });
 
     console.log('Initial supply minted. Transaction:', mintSignature);
 
@@ -147,41 +142,22 @@ async function performInitialMintAndRevoke(
     const revokeTx = new Transaction()
       .add(
         // Revoke mint authority
-        createRevokeInstruction(
-          mint,
-          wallet.publicKey,
-          wallet.publicKey,
-          [],
-          TOKEN_2022_PROGRAM_ID
-        )
+        createRevokeInstruction(mint, wallet.publicKey, [], TOKEN_2022_PROGRAM_ID)
       )
       .add(
         // Revoke freeze authority and other authorities
-        createRevokeAuthoritiesInstruction(
-          mint,
-          wallet.publicKey
-        )
+        createRevokeAuthoritiesInstruction(mint, wallet.publicKey)
       );
 
-    const revokeSignature = await sendAndConfirmTransaction(
-      connection,
-      revokeTx,
-      [wallet],
-      {
-        commitment: 'confirmed',
-        preflightCommitment: 'confirmed',
-      }
-    );
+    const revokeSignature = await sendAndConfirmTransaction(connection, revokeTx, [wallet], {
+      commitment: 'confirmed',
+      preflightCommitment: 'confirmed',
+    });
 
     console.log('Authorities revoked. Transaction:', revokeSignature);
 
     // Verify authorities were revoked
-    const finalMintInfo = await getMint(
-      connection,
-      mint,
-      'confirmed',
-      TOKEN_2022_PROGRAM_ID
-    );
+    const finalMintInfo = await getMint(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
 
     if (finalMintInfo.mintAuthority || finalMintInfo.freezeAuthority) {
       throw new Error('Authority revocation verification failed. Some authorities still remain.');
@@ -195,7 +171,6 @@ async function performInitialMintAndRevoke(
       initialSupply: initialSupply.toString(),
       actualSupply: actualSupply.toString(),
     };
-
   } catch (error) {
     console.error('Error in initial mint and revoke:', error);
     throw error;
@@ -232,4 +207,4 @@ if (require.main === module) {
       console.error('Failed:', error.message);
       process.exit(1);
     });
-} 
+}

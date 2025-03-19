@@ -15,6 +15,7 @@
     "distribute-rewards": "ts-node src/scripts/distributeRewards.ts",
     "distribute-wbtc": "ts-node src/scripts/distributeWBTC.ts",
     "auto-distribute": "ts-node src/scripts/automatedDistribution.ts",
+    "verify-mainnet": "ts-node src/scripts/verifyMainnetConfig.ts",
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",

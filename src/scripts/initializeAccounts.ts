@@ -1,27 +1,18 @@
-import {
-  Connection,
-  PublicKey,
-  Keypair,
-  Transaction,
-  sendAndConfirmTransaction,
-  LAMPORTS_PER_SOL,
-} from '@solana/web3.js';
+import { PublicKey, Keypair, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import {
   TOKEN_2022_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { getConnection } from '../utils/rpcConnection';
 import * as dotenv from 'dotenv';
-import { getConfirmationStrategy } from '../utils/transactionConfirmation';
 import { TransactionManager } from '../utils/transactionManager';
 
 dotenv.config();
 
 async function initializeAccounts(): Promise<void> {
   console.log('\nInitializing accounts...\n');
-  
+
   const connection = getConnection();
   console.log('Using Helius RPC connection');
 
@@ -34,10 +25,10 @@ async function initializeAccounts(): Promise<void> {
 
   try {
     // Check wallet balance
-    const balance = await connection.getBalance(wallet.publicKey);
-    console.log(`Wallet balance: ${balance / 1e9} SOL`);
-    
-    if (balance < 0.1 * 1e9) {
+    const balance = await (await connection).getBalance(wallet.publicKey);
+    console.log(`Wallet balance: ${balance / LAMPORTS_PER_SOL} SOL`);
+
+    if (balance < 0.1 * LAMPORTS_PER_SOL) {
       console.warn('Warning: Wallet balance is below 0.1 SOL');
     }
 
@@ -46,22 +37,21 @@ async function initializeAccounts(): Promise<void> {
     const feeCollectorATA = getAssociatedTokenAddressSync(
       tokenMint,
       feeCollector.publicKey,
-      true,  // allowOwnerOffCurve
+      true, // allowOwnerOffCurve
       TOKEN_2022_PROGRAM_ID
     );
 
     const transaction = new Transaction().add(
       createAssociatedTokenAccountInstruction(
-        wallet.publicKey,  // payer
-        feeCollectorATA,       // ata
+        wallet.publicKey, // payer
+        feeCollectorATA, // ata
         feeCollector.publicKey, // owner
-        tokenMint,             // mint
-        TOKEN_2022_PROGRAM_ID  // programId
+        tokenMint, // mint
+        TOKEN_2022_PROGRAM_ID // programId
       )
     );
-
     // Initialize transaction manager
-    const transactionManager = new TransactionManager(connection);
+    const transactionManager = new TransactionManager(await connection);
 
     // Execute transaction with simulation and retry logic
     const result = await transactionManager.executeTransaction(
@@ -72,7 +62,6 @@ async function initializeAccounts(): Promise<void> {
 
     console.log(`Fee collector ATA created successfully. Signature: ${result.signature}`);
     console.log(`Fee collector ATA address: ${feeCollectorATA.toString()}`);
-
   } catch (error) {
     if (error instanceof Error && error.message?.includes('already in use')) {
       console.log('Fee collector ATA already exists');

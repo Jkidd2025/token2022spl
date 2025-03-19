@@ -25,7 +25,7 @@ export async function checkAndTopUpSolBalance(
     // If balance is below minimum, top up to target balance
     if (balance < MIN_SOL_BALANCE) {
       const topUpAmount = TARGET_SOL_BALANCE - balance;
-      
+
       // Check if wallet has enough SOL
       const walletBalance = await connection.getBalance(wallet.publicKey);
       if (walletBalance < topUpAmount + MIN_SOL_BALANCE) {

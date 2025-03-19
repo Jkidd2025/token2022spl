@@ -41,7 +41,6 @@ async function generateAccounts(): Promise<void> {
 
     console.log('\nSetup Complete! Please save these keys securely.');
     console.log('\nIMPORTANT: Fund the fee collector account with SOL before using in production!');
-
   } catch (error) {
     console.error('Error generating accounts:', error);
     throw error;
@@ -58,4 +57,4 @@ if (require.main === module) {
     });
 }
 
-export { generateAccounts }; 
+export { generateAccounts };
