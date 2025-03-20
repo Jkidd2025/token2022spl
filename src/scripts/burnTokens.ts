@@ -10,7 +10,7 @@ import {
   ConfirmOptions,
 } from '@solana/web3.js';
 import {
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createBurnInstruction,
   getAssociatedTokenAddress,
   getAccount,
@@ -152,7 +152,7 @@ async function validateBurnParameters(
       connection,
       burnFromAddress,
       'confirmed',
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     // Verify sufficient balance
@@ -163,7 +163,7 @@ async function validateBurnParameters(
     }
 
     // Get mint info
-    const mintInfo = await getMint(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
+    const mintInfo = await getMint(connection, mint, 'confirmed', TOKEN_PROGRAM_ID);
 
     // Verify mint is initialized
     if (!mintInfo.isInitialized) {
@@ -262,7 +262,7 @@ async function burnTokens(
     // If no burn address specified, use the wallet's token account
     const burnFrom = burnFromAddress
       ? new PublicKey(burnFromAddress)
-      : await getAssociatedTokenAddress(mint, wallet.publicKey, false, TOKEN_2022_PROGRAM_ID);
+      : await getAssociatedTokenAddress(mint, wallet.publicKey, false, TOKEN_PROGRAM_ID);
 
     // Always use WBTC decimals
     const decimals = WBTC_DECIMALS;
@@ -295,7 +295,7 @@ async function burnTokens(
         wallet.publicKey,
         actualBurnAmount,
         [],
-        TOKEN_2022_PROGRAM_ID
+        TOKEN_PROGRAM_ID
       )
     );
 
@@ -331,7 +331,7 @@ async function burnTokens(
       connection,
       burnFrom,
       confirmationStrategy.commitment,
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
     burnEvent.validations.postValidation = true;
 

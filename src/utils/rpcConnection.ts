@@ -56,7 +56,7 @@ const RPC_ENDPOINTS: RPCEndpoint[] = [
     name: 'Solana',
     url: 'https://api.mainnet-beta.solana.com',
     priority: 2,
-  }
+  },
 ];
 
 /**

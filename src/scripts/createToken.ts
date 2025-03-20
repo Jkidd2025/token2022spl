@@ -10,23 +10,42 @@ import {
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
 import {
-  ExtensionType,
   getMintLen,
-  TOKEN_2022_PROGRAM_ID,
-  createInitializeTransferFeeConfigInstruction,
-  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   createInitializeMintInstruction,
-  createInitializeMetadataPointerInstruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
   AuthorityType,
+  MINT_SIZE,
 } from '@solana/spl-token';
+import {
+  ExtensionType,
+  getAssociatedTokenAddress,
+  createInitializeMetadataPointerInstruction,
+  LENGTH_SIZE,
+  TYPE_SIZE,
+  TOKEN_2022_PROGRAM_ID,
+  createInitializeTransferFeeConfigInstruction,
+  createUpdateFieldInstruction,
+} from '@solana/spl-token';
+import {
+  createInitializeInstruction,
+  pack,
+  TokenMetadata,
+} from '@solana/spl-token-metadata';
 import * as dotenv from 'dotenv';
 import { TransactionManager } from '../utils/transactionManager';
-import { createTokenMetadata, TokenMetadata } from '../utils/metadata';
+import { TOKEN_CONSTANTS } from '../config/tokens';
 
 dotenv.config();
+
+// Constants
+const METADATA_SEED = 'metadata';
+const MIN_SOL_BALANCE = 0.02;
+const TRANSACTION_TIMEOUT = 60000;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000;
 
 interface TokenBackup {
   publicKey: string;
@@ -38,8 +57,12 @@ interface TokenBackup {
 interface TokenMintInfo {
   address: string;
   decimals: number;
-  extensions: string[];
-  feeCollector: string;
+  rewardsPool: string;
+  operationsWallet: string;
+}
+
+interface TransactionError extends Error {
+  logs?: string[];
 }
 
 function validateEnvironment(): void {
@@ -47,8 +70,8 @@ function validateEnvironment(): void {
     'SOLANA_RPC_URL',
     'WALLET_PRIVATE_KEY',
     'TOKEN_DECIMALS',
-    'TRANSFER_FEE_BASIS_POINTS',
-    'FEE_COLLECTOR_PRIVATE_KEY',
+    'REWARDS_POOL_PRIVATE_KEY',
+    'OPERATIONS_WALLET_PRIVATE_KEY',
   ];
   for (const envVar of requiredEnvVars) {
     if (!process.env[envVar]) {
@@ -74,6 +97,28 @@ async function backupAccount(keypair: Keypair, label: string): Promise<TokenBack
   return backup;
 }
 
+async function executeWithRetry<T>(
+  operation: () => Promise<T>,
+  retries = MAX_RETRIES,
+  delay = RETRY_DELAY
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        console.log(`Retrying operation (attempt ${i + 2}/${retries})`);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 async function createToken(): Promise<TokenMintInfo> {
   try {
     console.log('Starting token creation process...');
@@ -82,7 +127,7 @@ async function createToken(): Promise<TokenMintInfo> {
 
     const connection = new Connection(process.env.SOLANA_RPC_URL!, {
       commitment: 'confirmed',
-      confirmTransactionInitialTimeout: 60000,
+      confirmTransactionInitialTimeout: TRANSACTION_TIMEOUT,
     });
     console.log('Connected to Solana network');
 
@@ -90,167 +135,144 @@ async function createToken(): Promise<TokenMintInfo> {
       new Uint8Array(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
     );
     console.log('Wallet:', wallet.publicKey.toBase58());
-    console.log('Wallet secret key length:', wallet.secretKey.length);
 
-    const feeCollectorKeypair = Keypair.fromSecretKey(
-      new Uint8Array(JSON.parse(process.env.FEE_COLLECTOR_PRIVATE_KEY!))
+    const rewardsPoolKeypair = Keypair.fromSecretKey(
+      new Uint8Array(JSON.parse(process.env.REWARDS_POOL_PRIVATE_KEY!))
     );
-    console.log('Fee collector:', feeCollectorKeypair.publicKey.toBase58());
+    console.log('Rewards Pool:', rewardsPoolKeypair.publicKey.toBase58());
+
+    const operationsWalletKeypair = Keypair.fromSecretKey(
+      new Uint8Array(JSON.parse(process.env.OPERATIONS_WALLET_PRIVATE_KEY!))
+    );
+    console.log('Operations Wallet:', operationsWalletKeypair.publicKey.toBase58());
+
     const mint = Keypair.generate();
-    const decimals = 9;
-    const feeBasisPoints = parseInt(process.env.TRANSFER_FEE_BASIS_POINTS!, 10);
-    validateFeeConfig(feeBasisPoints);
-    const extensions = [ExtensionType.MetadataPointer, ExtensionType.TransferFeeConfig];
-    const mintLen = getMintLen(extensions);
+    const decimals = TOKEN_CONSTANTS.DECIMALS;
+
+    const mintLen = MINT_SIZE;
     const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
 
     console.log('Mint:', mint.publicKey.toBase58());
-    console.log('Mint length with extensions:', mintLen);
-    console.log('Decimals:', decimals);
-    console.log('Balance:', (await connection.getBalance(wallet.publicKey)) / 1e9, 'SOL');
+    const balance = await connection.getBalance(wallet.publicKey);
+    console.log('Balance:', balance / 1e9, 'SOL');
 
-    if ((await connection.getBalance(wallet.publicKey)) < lamports + 0.02 * 1e9) {
-      throw new Error('Insufficient funds');
+    if (balance < lamports + MIN_SOL_BALANCE * 1e9) {
+      const requiredBalance = (lamports + MIN_SOL_BALANCE * 1e9) / 1e9;
+      throw new Error(`Insufficient funds. Need at least ${requiredBalance} SOL`);
     }
 
     const transactionManager = new TransactionManager(connection);
-    const { blockhash: initialBlockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash();
+    const { blockhash: initialBlockhash } = await connection.getLatestBlockhash();
 
-    // Step 1: Create token metadata
-    const [metadataPDA, bump] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('metadata'),
-        new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s').toBuffer(),
-        mint.publicKey.toBuffer(),
-      ],
-      new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
-    );
-    console.log('Metadata PDA:', metadataPDA.toBase58());
-    console.log('Bump seed:', bump);
-
-    const metadata: TokenMetadata = {
-      mint: mint.publicKey,
-      name: 'BPay',
-      symbol: 'BPAY',
-      uri: 'https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/src/config/metadata.json',
-      additionalMetadata: [
-        [
-          'description',
-          'The Next Generation WBTC Rewards on Solana - Token metadata is immutable after minting',
-        ],
-        [
-          'image',
-          'https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/assets/token-logo.png',
-        ],
-        ['external_url', 'https://github.com/Jkidd2025/token2022spl'],
-        ['sellerFeeBasisPoints', '500'],
-      ],
-    };
-    console.log('Initializing token metadata...');
-    const metadataSignature = await createTokenMetadata(
-      connection,
-      wallet,
-      mint.publicKey,
-      metadata
-    );
-    console.log('Token metadata initialized:', metadataSignature);
-
-    // Step 2: Create and initialize mint with extensions
+    // Step 1: Create and initialize mint
     const tx1 = new Transaction().add(
       SystemProgram.createAccount({
         fromPubkey: wallet.publicKey,
         newAccountPubkey: mint.publicKey,
         lamports,
         space: mintLen,
-        programId: TOKEN_2022_PROGRAM_ID,
+        programId: TOKEN_PROGRAM_ID,
       }),
-      createInitializeTransferFeeConfigInstruction(
-        mint.publicKey,
-        wallet.publicKey,
-        wallet.publicKey,
-        feeBasisPoints,
-        BigInt(1000) * BigInt(10 ** decimals),
-        TOKEN_2022_PROGRAM_ID
-      ),
-      createInitializeMetadataPointerInstruction(
-        mint.publicKey,
-        wallet.publicKey,
-        metadataPDA,
-        TOKEN_2022_PROGRAM_ID
-      ),
       createInitializeMintInstruction(
         mint.publicKey,
         decimals,
         wallet.publicKey,
         wallet.publicKey,
-        TOKEN_2022_PROGRAM_ID
+        TOKEN_PROGRAM_ID
       )
     );
+
     tx1.recentBlockhash = initialBlockhash;
     tx1.feePayer = wallet.publicKey;
 
-    console.log('Simulating mint creation and initialization...');
-    const sim1 = await connection.simulateTransaction(tx1, [wallet, mint]);
-    if (sim1.value.err) {
-      console.error('Simulation failed:', sim1.value.err);
-      console.error('Simulation logs:', sim1.value.logs);
-      throw new Error('Mint creation and initialization simulation failed');
-    }
-    console.log('Simulation succeeded:', sim1.value.logs);
-
     console.log('Creating and initializing mint...');
-    const sig1 = await sendAndConfirmTransaction(connection, tx1, [wallet, mint], {
-      commitment: 'finalized',
-    });
+    const sig1 = await executeWithRetry(() =>
+      sendAndConfirmTransaction(connection, tx1, [wallet, mint], {
+        commitment: 'finalized',
+      })
+    );
     console.log('Mint created and initialized:', sig1);
 
-    // Check mint account state
-    const mintAccount = await connection.getAccountInfo(mint.publicKey);
-    if (!mintAccount) throw new Error('Mint account not found after initialization');
-    console.log('Mint account state:', {
-      owner: mintAccount?.owner.toBase58(),
-      lamports: mintAccount?.lamports,
-      dataLength: mintAccount?.data.length,
-    });
-
-    // Step 3: Create fee collector ATA
-    const feeCollectorAta = await getAssociatedTokenAddress(
+    // Step 2: Create token accounts for rewards pool and operations wallet
+    const rewardsPoolATA = await getAssociatedTokenAddress(
       mint.publicKey,
-      feeCollectorKeypair.publicKey,
-      true,
-      TOKEN_2022_PROGRAM_ID
+      rewardsPoolKeypair.publicKey,
+      false,
+      TOKEN_PROGRAM_ID
     );
-    const tx2 = new Transaction().add(
-      createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        feeCollectorAta,
-        feeCollectorKeypair.publicKey,
-        mint.publicKey,
-        TOKEN_2022_PROGRAM_ID
+
+    const operationsWalletATA = await getAssociatedTokenAddress(
+      mint.publicKey,
+      operationsWalletKeypair.publicKey,
+      false,
+      TOKEN_PROGRAM_ID
+    );
+
+    const tx2 = new Transaction()
+      .add(
+        createAssociatedTokenAccountInstruction(
+          wallet.publicKey,
+          rewardsPoolATA,
+          rewardsPoolKeypair.publicKey,
+          mint.publicKey,
+          TOKEN_PROGRAM_ID
+        )
       )
-    );
+      .add(
+        createAssociatedTokenAccountInstruction(
+          wallet.publicKey,
+          operationsWalletATA,
+          operationsWalletKeypair.publicKey,
+          mint.publicKey,
+          TOKEN_PROGRAM_ID
+        )
+      );
+
     tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     tx2.feePayer = wallet.publicKey;
-    const sig2 = await transactionManager.executeTransaction(tx2, [wallet], 'CREATE_FEE_ATA');
-    console.log('Fee collector ATA created:', sig2);
-    // Step 4: Create wallet ATA
-    const walletAta = await getAssociatedTokenAddress(
-      mint.publicKey,
-      wallet.publicKey,
-      true,
-      TOKEN_2022_PROGRAM_ID
+
+    console.log('Creating token accounts for rewards pool and operations wallet...');
+    const sig2 = await executeWithRetry(() =>
+      sendAndConfirmTransaction(connection, tx2, [wallet], {
+        commitment: 'finalized',
+      })
+    );
+    console.log('Token accounts created:', sig2);
+
+    // Step 3: Disable mint authority
+    const tx3 = new Transaction().add(
+      createSetAuthorityInstruction(
+        mint.publicKey,
+        wallet.publicKey,
+        AuthorityType.MintTokens,
+        null,
+        [],
+        TOKEN_PROGRAM_ID
+      )
     );
 
-    // Return the token mint info
+    tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    tx3.feePayer = wallet.publicKey;
+
+    console.log('Disabling mint authority...');
+    const sig3 = await executeWithRetry(() =>
+      sendAndConfirmTransaction(connection, tx3, [wallet], {
+        commitment: 'finalized',
+      })
+    );
+    console.log('Mint authority disabled:', sig3);
+
+    // Backup mint account
+    await backupAccount(mint, 'mint');
+
     return {
       address: mint.publicKey.toBase58(),
       decimals,
-      extensions: extensions.map((ext) => ExtensionType[ext]),
-      feeCollector: feeCollectorKeypair.publicKey.toBase58(),
+      rewardsPool: rewardsPoolATA.toBase58(),
+      operationsWallet: operationsWalletATA.toBase58(),
     };
   } catch (error) {
-    console.error('Error in createToken:', error);
+    console.error('Failed to create token:', error);
     throw error;
   }
 }
@@ -259,7 +281,7 @@ async function main() {
   try {
     console.log('Starting token creation process...');
     const tokenInfo = await createToken();
-    console.log('Token creation completed successfully:', tokenInfo);
+    console.log('Token created successfully:', tokenInfo);
   } catch (error) {
     console.error('Failed to create token:', error);
     process.exit(1);
@@ -268,3 +290,5 @@ async function main() {
 
 // Call the main function
 main();
+
+export { createToken };

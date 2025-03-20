@@ -1,15 +1,11 @@
-import {
-  PublicKey,
-  TransactionInstruction,
-  SystemProgram,
-} from '@solana/web3.js';
-import { TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
+import { PublicKey, TransactionInstruction, SystemProgram } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Buffer } from 'buffer';
 
 export function createInitializeMetadataPointerInstruction(
   mint: PublicKey,
   authority: PublicKey,
-  programId: PublicKey = TOKEN_2022_PROGRAM_ID
+  programId: PublicKey = TOKEN_PROGRAM_ID
 ): TransactionInstruction {
   const keys = [
     { pubkey: mint, isSigner: false, isWritable: true },
@@ -29,18 +25,19 @@ export function createInitializeMetadataPointerInstruction(
 export function createRevokeAuthoritiesInstruction(
   mint: PublicKey,
   authority: PublicKey,
-  programId: PublicKey = TOKEN_2022_PROGRAM_ID
+  programId: PublicKey = TOKEN_PROGRAM_ID
 ): TransactionInstruction {
   const keys = [
     { pubkey: mint, isSigner: false, isWritable: true },
     { pubkey: authority, isSigner: true, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
 
-  const data = Buffer.from([29]); // Revoke authorities instruction
+  const data = Buffer.from([27]); // Revoke authorities instruction
 
   return new TransactionInstruction({
     keys,
     programId,
     data,
   });
-} 
+}

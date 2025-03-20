@@ -1,42 +1,260 @@
-# SPL Token 2022 Implementation
+# SPL Token Implementation with Protocol-Level Fees
 
-A comprehensive implementation of an SPL Token 2022 with advanced features including fee extensions, rewards, WBTC distribution, and burns.
+## Overview
+
+This project implements a Solana SPL token with protocol-level fee distribution and rewards system. The implementation includes automatic fee collection, WBTC rewards distribution, and comprehensive transaction management.
 
 ## Features
 
-- **Core Token Functionality**
+- Standard SPL token implementation
+- Protocol-level fee system (5% total fee in single transaction):
+  - 95% to recipient
+  - 2.5% automatically to WBTC rewards pool
+  - 2.5% automatically to operations wallet
+- Automated rewards distribution
+- Secure transaction handling
+- Comprehensive monitoring system
 
-  - Standard SPL Token 2022 implementation
-  - Initial supply minting
-  - Transfer capabilities
+## Architecture
 
-- **Fee System**
+### Core Components
 
-  - 5% Transfer Fee
-  - Automatic fee collection
-  - Fee collector account management
+1. **Token System**
 
-- **Token Burning**
+   - Standard SPL token implementation
+   - Configurable decimals and supply
+   - Metadata support
 
-  - Dedicated burn account with initial allocation
-  - Controlled token burning mechanism
-  - Two-phase burn process (transfer then burn)
-  - Burn amount validation
-  - Balance verification
-  - Initial 10% supply allocation (configurable)
+2. **Protocol Fee System**
 
-- **WBTC Distribution**
+   - Application-level fee calculation
+   - Automatic fee collection
+   - Split distribution (WBTC rewards/operations)
 
-  - Automated distribution of WBTC to token holders
-  - Jupiter API integration for optimal swaps
-  - Configurable distribution schedule
-  - Proportional distribution based on holdings
+3. **Distribution System**
+   - Automated WBTC rewards distribution
+   - Batch processing for efficiency
+   - Configurable distribution schedule
 
-- **Reward System**
+### Wallet Structure
 
-  - Base token reward distribution
-  - Configurable reward percentages
-  - Batch processing for efficiency
+- Main Wallet: Token deployment and management
+- Backup Wallet: Security and recovery
+- Rewards Pool: WBTC rewards collection and distribution
+- Operations Wallet: Protocol maintenance and development
+
+## Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/Jkidd2025/token2022spl.git
+cd token2022spl
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Configure environment variables:
+
+```bash
+# Create .env file with the following configuration
+SOLANA_RPC_URL=your_rpc_url
+HELIUS_API_KEY=your_helius_api_key
+WALLET_PRIVATE_KEY=your_private_key
+TOKEN_DECIMALS=9
+INITIAL_SUPPLY=1000000000
+
+# Wallet Configuration
+BACKUP_WALLET_PRIVATE_KEY=your_backup_wallet_key
+REWARDS_POOL_PRIVATE_KEY=your_rewards_pool_key
+OPERATIONS_WALLET_PRIVATE_KEY=your_operations_wallet_key
+
+# Distribution Settings
+MINIMUM_DISTRIBUTION_AMOUNT=1000000
+BATCH_SIZE=5
+DISTRIBUTION_SCHEDULE="*/30 * * * *"
+```
+
+## Usage
+
+### Token Creation
+
+```bash
+npm run create-token
+```
+
+### Initial Token Mint
+
+```bash
+npm run initial-mint
+```
+
+### Transfer with Protocol Fees
+
+```bash
+npm run transfer -- <recipient> <amount> <mint>
+```
+
+### Distribute Rewards
+
+```bash
+npm run distribute-rewards
+```
+
+### Automated WBTC Distribution
+
+```bash
+npm run distribute-wbtc
+```
+
+## Protocol Fee Implementation
+
+The protocol implements a 5% fee on all transfers, handled in a single atomic transaction. Each transfer is automatically split into three parts:
+
+1. **Main Transfer (95%)**
+
+   - Sent directly to the intended recipient
+   - Automatically calculated from the total amount
+
+2. **Protocol Fee Split (5% total)**
+   - Automatically divided in the same transaction:
+     - 2.5% to rewards pool (for WBTC conversion and distribution)
+     - 2.5% to operations wallet (for maintenance and development)
+
+### Atomic Transaction Example
+
+```typescript
+// When sending 100 tokens, a single transaction contains:
+transaction.add(
+  // 1. Main transfer to recipient (95 tokens)
+  createTransferInstruction(sender, recipient, 95_000_000_000),
+  // 2. Rewards fee transfer (2.5 tokens)
+  createTransferInstruction(sender, rewardsPool, 2_500_000_000),
+  // 3. Operations fee transfer (2.5 tokens)
+  createTransferInstruction(sender, operationsWallet, 2_500_000_000)
+);
+
+// All three transfers succeed or fail together
+// No separate transactions needed for fee handling
+```
+
+### Fee Calculation
+
+```typescript
+// For a transfer of 100 tokens:
+const transferAmount = 100_000_000_000; // With 9 decimals
+const feePercentage = 5; // 5% total fee
+const rewardsFee = 2_500_000_000; // 2.5% to rewards
+const operationsFee = 2_500_000_000; // 2.5% to operations
+const recipientAmount = 95_000_000_000; // 95% to recipient
+
+// All handled in one atomic transaction
+```
+
+### Fee Processing Flow
+
+1. User initiates transfer of X tokens
+2. Protocol automatically calculates:
+   - 95% of X for recipient
+   - 2.5% of X for rewards pool
+   - 2.5% of X for operations
+3. Single transaction executes all three transfers
+4. Transaction succeeds only if all transfers complete
+
+## Security Features
+
+- Transaction simulation before execution
+- Multi-level confirmation strategies
+- Automated balance management
+- Emergency controls and backup system
+- Rate limiting and monitoring
+
+## Transaction Management
+
+### Confirmation Strategies
+
+```typescript
+{
+  LARGE_TRANSFER: {
+    commitment: 'finalized',
+    timeout: 60000
+  },
+  SMALL_TRANSFER: {
+    commitment: 'confirmed',
+    timeout: 30000
+  }
+}
+```
+
+### Retry Configuration
+
+```typescript
+{
+  MAX_RETRIES: 3,
+  RETRY_DELAY: 15000,
+  SIMULATION_REQUIRED: true
+}
+```
+
+## Monitoring and Alerts
+
+- Balance monitoring
+- Transaction tracking
+- Error logging
+- Email alerts
+- Discord notifications
+
+## Development
+
+### Prerequisites
+
+- Node.js v16.0.0 or higher
+- Solana CLI Tools
+- PM2 (for production deployment)
+
+### Build
+
+```bash
+npm run build
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+### Format
+
+```bash
+npm run format
+```
+
+## Production Deployment
+
+1. Configure PM2:
+
+```bash
+pm2 start ecosystem.config.js
+```
+
+2. Monitor processes:
+
+```bash
+pm2 monit
+```
+
+## License
+
+MIT
+
+## Support
+
+For support, please contact: mybpay2025@gmail.com
 
 ## Technical Specifications
 

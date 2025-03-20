@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Connection, PublicKey } from '@solana/web3.js';
-import { TOKEN_2022_PROGRAM_ID, getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
+import { TOKEN_PROGRAM_ID, getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
 
 export interface TokenHolder {
   address: string;
@@ -15,7 +15,7 @@ export async function getTokenHolders(
 ): Promise<TokenHolder[]> {
   try {
     // Get all token accounts for this mint
-    const accounts = await connection.getProgramAccounts(TOKEN_2022_PROGRAM_ID, {
+    const accounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
       filters: [
         {
           dataSize: 165, // Size of token account data
@@ -39,7 +39,7 @@ export async function getTokenHolders(
         connection,
         account.pubkey,
         'confirmed',
-        TOKEN_2022_PROGRAM_ID
+        TOKEN_PROGRAM_ID
       );
 
       if (tokenAccount.amount > BigInt(0) && !excludeSet.has(tokenAccount.owner.toBase58())) {

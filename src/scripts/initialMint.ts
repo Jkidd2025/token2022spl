@@ -6,12 +6,14 @@ import {
   Transaction,
 } from '@solana/web3.js';
 import {
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createMintToInstruction,
+  getAssociatedTokenAddress,
+  getAccount,
   getOrCreateAssociatedTokenAccount,
   createRevokeInstruction,
-  getAccount,
   getMint,
+  createTransferInstruction,
 } from '@solana/spl-token';
 import * as dotenv from 'dotenv';
 import { createRevokeAuthoritiesInstruction } from '../utils/instructions';
@@ -21,7 +23,10 @@ dotenv.config();
 interface InitialMintResult {
   mintAddress: string;
   tokenAccount: string;
+  rewardsPoolAccount: string;
+  operationsWalletAccount: string;
   mintSignature: string;
+  distributionSignature: string;
   revokeSignature: string;
   initialSupply: string;
   actualSupply: string;
@@ -34,7 +39,7 @@ async function validateMintAccount(
 ): Promise<PublicKey> {
   try {
     const mint = new PublicKey(mintAddress);
-    const mintInfo = await getMint(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
+    const mintInfo = await getMint(connection, mint, 'confirmed', TOKEN_PROGRAM_ID);
 
     // Verify mint authority
     if (!mintInfo.mintAuthority?.equals(wallet.publicKey)) {
@@ -65,12 +70,18 @@ async function performInitialMintAndRevoke(
   const connection = new Connection(process.env.SOLANA_RPC_URL!, 'confirmed');
 
   const wallet = Keypair.fromSecretKey(Buffer.from(JSON.parse(process.env.WALLET_PRIVATE_KEY!)));
+  const rewardsPool = Keypair.fromSecretKey(
+    Buffer.from(JSON.parse(process.env.REWARDS_POOL_PRIVATE_KEY!))
+  );
+  const operationsWallet = Keypair.fromSecretKey(
+    Buffer.from(JSON.parse(process.env.OPERATIONS_WALLET_PRIVATE_KEY!))
+  );
 
   // Validate mint account
   const mint = await validateMintAccount(connection, mintAddress, wallet);
 
   try {
-    // Create token account for the wallet
+    // Create token accounts
     const tokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       wallet,
@@ -79,7 +90,29 @@ async function performInitialMintAndRevoke(
       false,
       'confirmed',
       undefined,
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
+    );
+
+    const rewardsPoolAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      wallet,
+      mint,
+      rewardsPool.publicKey,
+      false,
+      'confirmed',
+      undefined,
+      TOKEN_PROGRAM_ID
+    );
+
+    const operationsWalletAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      wallet,
+      mint,
+      operationsWallet.publicKey,
+      false,
+      'confirmed',
+      undefined,
+      TOKEN_PROGRAM_ID
     );
 
     // Check if token account already has a balance
@@ -87,7 +120,7 @@ async function performInitialMintAndRevoke(
       connection,
       tokenAccount.address,
       'confirmed',
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     if (tokenAccountInfo.amount > BigInt(0)) {
@@ -115,7 +148,7 @@ async function performInitialMintAndRevoke(
         wallet.publicKey,
         actualSupply,
         [],
-        TOKEN_2022_PROGRAM_ID
+        TOKEN_PROGRAM_ID
       )
     );
 
@@ -131,18 +164,58 @@ async function performInitialMintAndRevoke(
       connection,
       tokenAccount.address,
       'confirmed',
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     if (updatedTokenAccount.amount !== actualSupply) {
       throw new Error('Mint verification failed. Token balance does not match expected supply.');
     }
 
+    // Distribute initial allocations to rewards pool and operations wallet
+    const rewardsAmount = actualSupply / BigInt(20); // 5% to rewards pool
+    const operationsAmount = actualSupply / BigInt(20); // 5% to operations wallet
+
+    const distributionTx = new Transaction()
+      .add(
+        // Transfer to rewards pool
+        createTransferInstruction(
+          tokenAccount.address,
+          rewardsPoolAccount.address,
+          wallet.publicKey,
+          rewardsAmount,
+          [],
+          TOKEN_PROGRAM_ID
+        )
+      )
+      .add(
+        // Transfer to operations wallet
+        createTransferInstruction(
+          tokenAccount.address,
+          operationsWalletAccount.address,
+          wallet.publicKey,
+          operationsAmount,
+          [],
+          TOKEN_PROGRAM_ID
+        )
+      );
+
+    const distributionSignature = await sendAndConfirmTransaction(
+      connection,
+      distributionTx,
+      [wallet],
+      {
+        commitment: 'confirmed',
+        preflightCommitment: 'confirmed',
+      }
+    );
+
+    console.log('Initial allocations distributed. Transaction:', distributionSignature);
+
     // Revoke authorities
     const revokeTx = new Transaction()
       .add(
         // Revoke mint authority
-        createRevokeInstruction(mint, wallet.publicKey, [], TOKEN_2022_PROGRAM_ID)
+        createRevokeInstruction(mint, wallet.publicKey, [], TOKEN_PROGRAM_ID)
       )
       .add(
         // Revoke freeze authority and other authorities
@@ -157,7 +230,7 @@ async function performInitialMintAndRevoke(
     console.log('Authorities revoked. Transaction:', revokeSignature);
 
     // Verify authorities were revoked
-    const finalMintInfo = await getMint(connection, mint, 'confirmed', TOKEN_2022_PROGRAM_ID);
+    const finalMintInfo = await getMint(connection, mint, 'confirmed', TOKEN_PROGRAM_ID);
 
     if (finalMintInfo.mintAuthority || finalMintInfo.freezeAuthority) {
       throw new Error('Authority revocation verification failed. Some authorities still remain.');
@@ -166,7 +239,10 @@ async function performInitialMintAndRevoke(
     return {
       mintAddress: mint.toBase58(),
       tokenAccount: tokenAccount.address.toBase58(),
+      rewardsPoolAccount: rewardsPoolAccount.address.toBase58(),
+      operationsWalletAccount: operationsWalletAccount.address.toBase58(),
       mintSignature,
+      distributionSignature,
       revokeSignature,
       initialSupply: initialSupply.toString(),
       actualSupply: actualSupply.toString(),
@@ -196,9 +272,12 @@ if (require.main === module) {
       console.table({
         'Mint Address': result.mintAddress,
         'Token Account': result.tokenAccount,
+        'Rewards Pool Account': result.rewardsPoolAccount,
+        'Operations Wallet Account': result.operationsWalletAccount,
         'Initial Supply': result.initialSupply,
         'Actual Supply (with decimals)': result.actualSupply,
         'Mint Transaction': result.mintSignature,
+        'Distribution Transaction': result.distributionSignature,
         'Revoke Transaction': result.revokeSignature,
       });
       process.exit(0);
@@ -208,3 +287,5 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+
+export { performInitialMintAndRevoke };

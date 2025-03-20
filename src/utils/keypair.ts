@@ -1,16 +1,16 @@
 import { Keypair } from '@solana/web3.js';
-import * as bs58 from 'bs58';
 
-export function getKeypairFromEnvironment(envKey: string): Keypair {
-  const privateKey = process.env[envKey];
-  if (!privateKey) {
-    throw new Error(`Missing ${envKey} environment variable`);
+export function loadKeypairFromEnv(envKey: string): Keypair {
+  const privateKeyString = process.env[envKey];
+  if (!privateKeyString) {
+    throw new Error(`${envKey} environment variable is not set`);
   }
-  
+
   try {
-    const decodedKey = bs58.decode(privateKey);
-    return Keypair.fromSecretKey(decodedKey);
+    const privateKeyArray = JSON.parse(privateKeyString);
+    return Keypair.fromSecretKey(new Uint8Array(privateKeyArray));
   } catch (error) {
-    throw new Error(`Invalid ${envKey} environment variable: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    throw new Error(`Invalid ${envKey} environment variable: ${errorMessage}`);
   }
-} 
+}

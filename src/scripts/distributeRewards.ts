@@ -8,7 +8,7 @@ import {
   TransactionInstruction,
 } from '@solana/web3.js';
 import {
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createTransferInstruction,
   getAssociatedTokenAddress,
   getAccount,
@@ -81,7 +81,7 @@ async function distributeRewards(
       mint,
       feeCollector,
       false,
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     // Verify source account has enough tokens
@@ -89,7 +89,7 @@ async function distributeRewards(
       connection,
       sourceAccount,
       'confirmed',
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 9;
@@ -121,7 +121,7 @@ async function distributeRewards(
           false,
           'confirmed',
           undefined,
-          TOKEN_2022_PROGRAM_ID
+          TOKEN_PROGRAM_ID
         );
 
         const distributionAmount = BigInt(
@@ -134,7 +134,7 @@ async function distributeRewards(
           feeCollector,
           distributionAmount,
           [],
-          TOKEN_2022_PROGRAM_ID
+          TOKEN_PROGRAM_ID
         );
 
         batchTransaction.add(transferInstruction);

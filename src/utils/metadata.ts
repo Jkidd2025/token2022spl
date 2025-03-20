@@ -5,9 +5,10 @@ import {
   Transaction,
   sendAndConfirmTransaction,
   Keypair,
-  SystemProgram,
+  TransactionSignature,
+  TransactionError as SolanaTransactionError,
 } from '@solana/web3.js';
-import { TYPE_SIZE, LENGTH_SIZE } from '@solana/spl-token';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   createInitializeInstruction,
   pack,
@@ -15,32 +16,53 @@ import {
   createUpdateFieldInstruction,
 } from '@solana/spl-token-metadata';
 import { Buffer } from 'buffer';
+import { TOKEN_CONSTANTS } from '../config/tokens';
 
-const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+// Constants
+const METADATA_SEED = 'metadata';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000;
+const TRANSACTION_TIMEOUT = 60000;
 
-export type TokenMetadata = {
+export interface TokenMetadata {
   name: string;
   symbol: string;
   uri: string;
   mint: PublicKey;
-  additionalMetadata: (readonly [string, string])[];
-};
+  additionalMetadata: ReadonlyArray<readonly [string, string]>;
+}
+
+interface MetadataError extends Error {
+  code?: string;
+  logs?: string[];
+}
 
 export function validateMetadata(metadata: TokenMetadata): void {
-  if (!metadata.name || metadata.name.length === 0) throw new Error('Metadata name is required');
-  if (!metadata.symbol || metadata.symbol.length === 0)
-    throw new Error('Metadata symbol is required');
-  if (!metadata.uri || metadata.uri.length === 0) throw new Error('Metadata uri is required');
-  if (!metadata.mint) throw new Error('Metadata mint is required');
+  if (!metadata.name?.trim()) {
+    throw new Error('Metadata name is required and cannot be empty');
+  }
+  if (!metadata.symbol?.trim()) {
+    throw new Error('Metadata symbol is required and cannot be empty');
+  }
+  if (!metadata.uri?.trim()) {
+    throw new Error('Metadata URI is required and cannot be empty');
+  }
+  if (!metadata.mint) {
+    throw new Error('Metadata mint is required');
+  }
   try {
     new PublicKey(metadata.mint);
   } catch (error) {
-    throw new Error('Invalid mint public key');
+    throw new Error('Invalid mint public key format');
   }
-  metadata.additionalMetadata.forEach(([key, value]) => {
-    if (typeof key !== 'string' || key.length === 0)
-      throw new Error('Additional metadata key must be a non-empty string');
-    if (typeof value !== 'string') throw new Error('Additional metadata value must be a string');
+
+  metadata.additionalMetadata.forEach(([key, value], index) => {
+    if (!key?.trim()) {
+      throw new Error(`Additional metadata key at index ${index} must be a non-empty string`);
+    }
+    if (typeof value !== 'string') {
+      throw new Error(`Additional metadata value at index ${index} must be a string`);
+    }
   });
 }
 
@@ -54,9 +76,29 @@ export const DEFAULT_TOKEN_METADATA: TokenMetadata = {
 
 function getMetadataAddress(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    TOKEN_METADATA_PROGRAM_ID
+    [Buffer.from(METADATA_SEED), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    TOKEN_PROGRAM_ID
   );
+}
+
+async function executeWithRetry<T>(
+  operation: () => Promise<T>,
+  retries = MAX_RETRIES,
+  delay = RETRY_DELAY
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        console.log(`Retrying operation (attempt ${i + 2}/${retries})`);
+      }
+    }
+  }
+  throw lastError;
 }
 
 export async function createTokenMetadata(
@@ -64,15 +106,11 @@ export async function createTokenMetadata(
   payer: Keypair,
   mint: PublicKey,
   metadata: TokenMetadata
-): Promise<string> {
+): Promise<TransactionSignature> {
   try {
     validateMetadata(metadata);
 
-    // Get the metadata PDA
-    const [metadataPDA] = PublicKey.findProgramAddressSync(
-      [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-      TOKEN_METADATA_PROGRAM_ID
-    );
+    const [metadataPDA] = getMetadataAddress(mint);
     console.log('Using metadata PDA:', metadataPDA.toString());
 
     // Create transaction
@@ -81,7 +119,7 @@ export async function createTokenMetadata(
     // Add initialize metadata instruction
     transaction.add(
       createInitializeInstruction({
-        programId: TOKEN_METADATA_PROGRAM_ID,
+        programId: TOKEN_PROGRAM_ID,
         metadata: metadataPDA,
         updateAuthority: payer.publicKey,
         mint,
@@ -96,7 +134,7 @@ export async function createTokenMetadata(
     for (const [key, value] of metadata.additionalMetadata) {
       transaction.add(
         createUpdateFieldInstruction({
-          programId: TOKEN_METADATA_PROGRAM_ID,
+          programId: TOKEN_PROGRAM_ID,
           metadata: metadataPDA,
           updateAuthority: payer.publicKey,
           field: key,
@@ -105,40 +143,46 @@ export async function createTokenMetadata(
       );
     }
 
-    // Set recent blockhash
+    // Set recent blockhash and sign transaction
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = payer.publicKey;
-
-    // Sign transaction
     transaction.sign(payer);
 
-    // Send and confirm transaction
-    console.log('Sending metadata transaction...');
-    const signature = await connection.sendTransaction(transaction, [payer], {
-      skipPreflight: false,
-      preflightCommitment: 'finalized',
-      maxRetries: 3,
+    // Send and confirm transaction with retry logic
+    return await executeWithRetry(async () => {
+      console.log('Sending metadata transaction...');
+      const signature = await connection.sendTransaction(transaction, [payer], {
+        skipPreflight: false,
+        preflightCommitment: 'finalized',
+        maxRetries: MAX_RETRIES,
+      });
+      console.log('Metadata transaction sent:', signature);
+
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        'finalized'
+      );
+
+      if (confirmation.value.err) {
+        const error = new Error('Transaction failed') as MetadataError;
+        error.code = 'METADATA_TRANSACTION_FAILED';
+        error.logs = confirmation.value.err as unknown as string[];
+        throw error;
+      }
+
+      return signature;
     });
-    console.log('Metadata transaction sent:', signature);
-
-    // Wait for confirmation
-    const confirmation = await connection.confirmTransaction(
-      {
-        signature,
-        blockhash,
-        lastValidBlockHeight,
-      },
-      'finalized'
-    );
-
-    if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-    }
-
-    return signature;
   } catch (error) {
     console.error('Error in createTokenMetadata:', error);
+    const metadataError = error as MetadataError;
+    if (metadataError.logs) {
+      console.error('Transaction logs:', metadataError.logs);
+    }
     throw error;
   }
 }

@@ -1,6 +1,6 @@
 import { PublicKey, Keypair, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import {
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
@@ -38,7 +38,7 @@ async function initializeAccounts(): Promise<void> {
       tokenMint,
       feeCollector.publicKey,
       true, // allowOwnerOffCurve
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     );
 
     const transaction = new Transaction().add(
@@ -47,7 +47,7 @@ async function initializeAccounts(): Promise<void> {
         feeCollectorATA, // ata
         feeCollector.publicKey, // owner
         tokenMint, // mint
-        TOKEN_2022_PROGRAM_ID // programId
+        TOKEN_PROGRAM_ID // programId
       )
     );
     // Initialize transaction manager
