@@ -1,10 +1,10 @@
 {
   "name": "BPay",
   "symbol": "BPAY",
-  "description": "The Next Generation WBTC Rewards on Solana - Token metadata is immutable after minting",
-  "image": "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/assets/token-logo.png",
-  "external_url": "https://github.com/Jkidd2025/token2022spl",
-  "uri": "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/src/config/metadata.json",
+  "description": "BPay (BPAY) is the Next Generation WBTC Rewards Token on Solana. Features include automated WBTC rewards distribution every 30 minutes, 5% transfer fee with 50% to WBTC rewards pool, and built on the advanced Token-2022 standard for enhanced functionality and security.",
+  "image": "https://ipfs.io/ipns/k51qzi5uqu5dm8e8ha6oxwhekeqz8iemc8xk2mok4u73borphn81u5bbzvb66s",
+  "external_url": "https://bpaycrypto.com",
+  "uri": "https://ipfs.io/ipns/k51qzi5uqu5dm8e8ha6oxwhekeqz8iemc8xk2mok4u73borphn81u5bbzvb66s/metadata.json",
   "sellerFeeBasisPoints": 500,
   "decimals": 9,
   "attributes": [
@@ -31,19 +31,27 @@
     {
       "trait_type": "Metadata",
       "value": "Immutable"
+    },
+    {
+      "trait_type": "Reward Split",
+      "value": "50% WBTC Distribution / 50% Operations"
+    },
+    {
+      "trait_type": "Initial Supply",
+      "value": "1,000,000,000"
     }
   ],
   "properties": {
     "files": [
       {
-        "uri": "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/assets/token-logo.png",
+        "uri": "https://ipfs.io/ipns/k51qzi5uqu5dm8e8ha6oxwhekeqz8iemc8xk2mok4u73borphn81u5bbzvb66s",
         "type": "image/png"
       }
     ],
     "category": "token",
     "creators": [
       {
-        "address": "",
+        "address": "5rkizgeCMPxLQBu4PtBjMS78Ky6T7Y4QKsW72v9yhHkw",
         "verified": true,
         "share": 100
       }
