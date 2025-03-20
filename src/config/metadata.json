@@ -6,6 +6,7 @@
   "external_url": "https://github.com/Jkidd2025/token2022spl",
   "uri": "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/src/config/metadata.json",
   "sellerFeeBasisPoints": 500,
+  "decimals": 9,
   "attributes": [
     {
       "trait_type": "Token Standard",
@@ -49,7 +50,7 @@
     ]
   },
   "uses": {
-    "useMethod": "burn",
+    "useMethod": "single",
     "remaining": 0,
     "total": 0
   }

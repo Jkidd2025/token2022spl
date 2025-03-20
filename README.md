@@ -237,7 +237,7 @@ await burnTokens(
   '1000', // Amount to burn
   'burn_account_address', // Dedicated burn account
   'source_address', // Optional source
-  { decimals: 6 } // Optional config
+  { decimals: 9 } // Optional config
 );
 ```
 
@@ -247,7 +247,7 @@ await burnTokens(
 {
   transferToBurnAmount: "1000",
   burnAmount: "1000",
-  actualBurnAmount: "1000000000",  // With 6 decimals
+  actualBurnAmount: "1000000000000",  // With 9 decimals
   transferSignature: "tx_signature_1",
   burnSignature: "tx_signature_2",
   burnTokenAccount: "burn_account_address",
@@ -386,7 +386,7 @@ Environment variables required:
 ```env
 SOLANA_RPC_URL=your_rpc_url
 WALLET_PRIVATE_KEY=your_private_key
-TOKEN_DECIMALS=6
+TOKEN_DECIMALS=9
 TRANSFER_FEE_BASIS_POINTS=500  # 5%
 ```
 
@@ -417,7 +417,7 @@ npm install
 # Create .env file
 SOLANA_RPC_URL=your_rpc_url
 WALLET_PRIVATE_KEY=your_private_key
-TOKEN_DECIMALS=6
+TOKEN_DECIMALS=9
 TRANSFER_FEE_BASIS_POINTS=500
 DISTRIBUTION_SCHEDULE="0 0 * * *"  # Daily at midnight
 MINIMUM_FEE_AMOUNT=1000000
@@ -463,7 +463,7 @@ interface AutomationConfig {
 ```typescript
 {
   schedule: '0 0 * * *',     // Daily at midnight
-  minimumFeeAmount: 1000000, // Adjust based on decimals
+  minimumFeeAmount: 1000000000, // Adjust based on decimals
   retryDelay: 15,           // 15 minutes
   maxRetries: 3             // 3 retries
 }

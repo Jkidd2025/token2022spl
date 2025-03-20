@@ -1,209 +1,182 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Connection,
   PublicKey,
   Transaction,
   sendAndConfirmTransaction,
   Keypair,
+  SystemProgram,
 } from '@solana/web3.js';
+import { TYPE_SIZE, LENGTH_SIZE } from '@solana/spl-token';
 import {
-  createInitializeMetadataPointerInstruction,
-  METADATA_POINTER_PROGRAM_ID,
+  createInitializeInstruction,
+  pack,
+  TokenMetadata as SPLTokenMetadata,
+  createUpdateFieldInstruction,
 } from '@solana/spl-token-metadata';
 import { Buffer } from 'buffer';
 
-export interface TokenMetadata {
+// Token Metadata Program ID on mainnet
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+export type TokenMetadata = {
   name: string;
   symbol: string;
   uri: string;
-  decimals?: number;
-  sellerFeeBasisPoints?: number;
-  creators?: {
-    address: string;
-    verified: boolean;
-    share: number;
-  }[];
-  collection?: {
-    verified: boolean;
-    key: string;
-  };
-  uses?: {
-    useMethod: 'burn' | 'multiple' | 'single';
-    remaining: number;
-    total: number;
-  };
-}
+  mint: PublicKey;
+  additionalMetadata: (readonly [string, string])[];
+};
 
-// Validate metadata URI and required fields
-function validateMetadata(metadata: TokenMetadata): void {
-  // Basic field validation
+export function validateMetadata(metadata: TokenMetadata): void {
   if (!metadata.name || metadata.name.length === 0) {
-    throw new Error('Token name is required');
+    throw new Error('Metadata name is required');
   }
-  if (metadata.name.length > 32) {
-    throw new Error('Token name must not exceed 32 characters');
-  }
-  
   if (!metadata.symbol || metadata.symbol.length === 0) {
-    throw new Error('Token symbol is required');
+    throw new Error('Metadata symbol is required');
   }
-  if (metadata.symbol.length > 10) {
-    throw new Error('Token symbol must not exceed 10 characters');
-  }
-  
   if (!metadata.uri || metadata.uri.length === 0) {
-    throw new Error('Metadata URI is required');
+    throw new Error('Metadata uri is required');
   }
-  
-  // URI validation
-  if (!metadata.uri.startsWith('https://raw.githubusercontent.com/')) {
-    throw new Error('Metadata URI must be a raw GitHub URL');
+  if (!metadata.mint) {
+    throw new Error('Metadata mint is required');
   }
-
-  // Fee validation
-  if (metadata.sellerFeeBasisPoints !== undefined) {
-    if (metadata.sellerFeeBasisPoints < 0 || metadata.sellerFeeBasisPoints > 10000) {
-      throw new Error('Seller fee basis points must be between 0 and 10000');
+  try {
+    new PublicKey(metadata.mint);
+  } catch (error) {
+    throw new Error('Invalid mint public key');
+  }
+  metadata.additionalMetadata.forEach(([key, value]) => {
+    if (typeof key !== 'string' || key.length === 0) {
+      throw new Error('Additional metadata key must be a non-empty string');
     }
-  }
-
-  // Creator validation
-  if (metadata.creators) {
-    const totalShares = metadata.creators.reduce((sum, creator) => sum + creator.share, 0);
-    if (totalShares !== 100) {
-      throw new Error('Creator shares must total 100');
+    if (typeof value !== 'string') {
+      throw new Error('Additional metadata value must be a string');
     }
-    
-    // Validate each creator
-    metadata.creators.forEach((creator, index) => {
-      try {
-        if (creator.address) {
-          new PublicKey(creator.address);
-        }
-      } catch (error) {
-        throw new Error(`Invalid creator address at index ${index}`);
-      }
-      if (creator.share < 0 || creator.share > 100) {
-        throw new Error(`Invalid creator share at index ${index}`);
-      }
-    });
-  }
-
-  // Collection validation
-  if (metadata.collection) {
-    try {
-      new PublicKey(metadata.collection.key);
-    } catch (error) {
-      throw new Error('Invalid collection key');
-    }
-  }
-
-  console.log('Metadata validation passed:', {
-    name: metadata.name,
-    symbol: metadata.symbol,
-    uri: metadata.uri,
-    sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-    creators: metadata.creators?.length || 0
   });
 }
 
 export const DEFAULT_TOKEN_METADATA: TokenMetadata = {
-  name: "BPay",
-  symbol: "BPAY",
-  uri: "https://raw.githubusercontent.com/Jkidd2025/token2022spl/main/src/config/metadata.json",
-  sellerFeeBasisPoints: 500, // 5%
-  creators: [
-    {
-      address: "", // Will be set during token creation
-      verified: true,
-      share: 100,
-    },
-  ],
-  uses: {
-    useMethod: "burn",
-    remaining: 0,
-    total: 0,
-  },
+  name: '',
+  symbol: '',
+  uri: '',
+  mint: PublicKey.default,
+  additionalMetadata: [],
 };
+
+function getMetadataAddress(mint: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    TOKEN_METADATA_PROGRAM_ID
+  );
+}
 
 export async function createTokenMetadata(
   connection: Connection,
   payer: Keypair,
   mint: PublicKey,
   metadata: TokenMetadata
-) {
+): Promise<string> {
   try {
-    // Set the creator address to the payer's public key
-    if (metadata.creators && metadata.creators.length > 0) {
-      metadata.creators[0].address = payer.publicKey.toString();
-    }
-
-    // Validate metadata before proceeding
     validateMetadata(metadata);
 
-    const metadataAccount = await PublicKey.findProgramAddress(
-      [
-        Buffer.from('metadata'),
-        METADATA_POINTER_PROGRAM_ID.toBuffer(),
-        mint.toBuffer(),
-      ],
-      METADATA_POINTER_PROGRAM_ID
-    );
+    const transaction = new Transaction();
+    const [metadataAddress, bump] = getMetadataAddress(mint);
+    console.log('Metadata account address:', metadataAddress.toString());
+    console.log('Bump seed:', bump);
 
-    const transaction = new Transaction().add(
-      createInitializeMetadataPointerInstruction({
-        metadata: metadataAccount[0],
-        mint,
-        mintAuthority: payer.publicKey,
-        payer: payer.publicKey,
-        updateAuthority: payer.publicKey,
-        data: {
-          name: metadata.name,
-          symbol: metadata.symbol,
-          uri: metadata.uri,
-          sellerFeeBasisPoints: metadata.sellerFeeBasisPoints || 0,
-          creators: metadata.creators || null,
-          collection: metadata.collection || null,
-          uses: metadata.uses || null,
-        },
-        isMutable: false, // Set to false to make metadata immutable after minting
+    // Calculate size and lamports for metadata account
+    const splMetadata: SPLTokenMetadata = {
+      mint,
+      name: metadata.name,
+      symbol: metadata.symbol,
+      uri: metadata.uri,
+      additionalMetadata: metadata.additionalMetadata,
+    };
+    const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(splMetadata).length;
+    const lamports = await connection.getMinimumBalanceForRentExemption(metadataLen);
+    console.log('Metadata size:', metadataLen);
+    console.log('Lamports required:', lamports);
+
+    // Check if metadata account already exists
+    const existingAccount = await connection.getAccountInfo(metadataAddress);
+    if (existingAccount) {
+      throw new Error(`Metadata account already exists at ${metadataAddress.toString()}`);
+    }
+
+    // Create metadata account
+    transaction.add(
+      SystemProgram.createAccount({
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: metadataAddress,
+        lamports,
+        space: metadataLen,
+        programId: TOKEN_METADATA_PROGRAM_ID,
       })
     );
 
-    // Simulate transaction before sending
-    console.log('Simulating metadata transaction...');
-    const simulation = await connection.simulateTransaction(transaction);
-    if (simulation.value.err) {
-      throw new Error(`Metadata transaction simulation failed: ${simulation.value.err}`);
+    // Initialize metadata
+    const initMetadataInstruction = createInitializeInstruction({
+      programId: TOKEN_METADATA_PROGRAM_ID,
+      mint,
+      metadata: metadataAddress,
+      mintAuthority: payer.publicKey,
+      updateAuthority: payer.publicKey,
+      name: metadata.name,
+      symbol: metadata.symbol,
+      uri: metadata.uri,
+    });
+    transaction.add(initMetadataInstruction);
+
+    // Add additional metadata fields
+    for (const [key, value] of metadata.additionalMetadata) {
+      const updateFieldInstruction = createUpdateFieldInstruction({
+        programId: TOKEN_METADATA_PROGRAM_ID,
+        metadata: metadataAddress,
+        updateAuthority: payer.publicKey,
+        field: key,
+        value,
+      });
+      transaction.add(updateFieldInstruction);
     }
-    console.log('Metadata transaction simulation successful');
+
+    // Set recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = payer.publicKey;
+
+    // Simulate transaction
+    console.log('Simulating metadata transaction...');
+    const simulation = await connection.simulateTransaction(transaction, [payer]);
+    if (simulation.value.err) {
+      console.error('Metadata simulation failed:', simulation.value.err);
+      console.error('Simulation logs:', simulation.value.logs);
+      throw new Error(
+        `Metadata creation simulation failed: ${JSON.stringify(simulation.value.err)}`
+      );
+    }
+    console.log('Metadata simulation succeeded:', simulation.value.logs);
 
     // Send and confirm transaction
     console.log('Sending metadata transaction...');
-    const signature = await sendAndConfirmTransaction(
-      connection,
-      transaction,
-      [payer],
-      {
-        commitment: 'confirmed',
-        preflightCommitment: 'confirmed'
-      }
-    );
-
-    console.log('Created immutable token metadata:', {
-      metadataAddress: metadataAccount[0].toString(),
-      signature,
-      name: metadata.name,
-      symbol: metadata.symbol,
-      uri: metadata.uri
+    const signature = await sendAndConfirmTransaction(connection, transaction, [payer], {
+      commitment: 'confirmed',
     });
 
-    return {
-      metadataAddress: metadataAccount[0].toString(),
-      signature,
-    };
+    // Verify transaction confirmation
+    try {
+      await connection.confirmTransaction(
+        { signature, blockhash, lastValidBlockHeight },
+        'confirmed'
+      );
+      console.log('Metadata transaction confirmed:', signature);
+    } catch (error) {
+      console.error('Transaction confirmation error:', error);
+      throw error;
+    }
 
+    return signature;
   } catch (error) {
-    console.error('Error creating token metadata:', error);
+    console.error('Error in createTokenMetadata:', error);
     throw error;
   }
-} 
+}

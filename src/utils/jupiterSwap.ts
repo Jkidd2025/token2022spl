@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Connection,
   Keypair,
@@ -34,7 +37,7 @@ async function getQuote(
       outputMint,
       amount,
       slippageBps: slippageBps.toString(),
-      feeBps: "4" // 0.04% fee for Jupiter
+      feeBps: '4', // 0.04% fee for Jupiter
     });
 
     const response = await fetch(`${JUPITER_QUOTE_API}/quote?${params}`);
@@ -51,10 +54,7 @@ async function getQuote(
 /**
  * Get swap transaction from Jupiter Swap API
  */
-async function getSwapTransaction(
-  route: any,
-  userPublicKey: string
-) {
+async function getSwapTransaction(route: any, userPublicKey: string) {
   try {
     const response = await fetch(`${JUPITER_QUOTE_API}/swap`, {
       method: 'POST',
@@ -62,8 +62,8 @@ async function getSwapTransaction(
       body: JSON.stringify({
         route,
         userPublicKey,
-        wrapUnwrapSOL: true // Automatically wrap/unwrap SOL
-      })
+        wrapUnwrapSOL: true, // Automatically wrap/unwrap SOL
+      }),
     });
 
     if (!response.ok) {
@@ -84,14 +84,14 @@ export async function getDetailedRouteInfo(
   outputMint: string,
   amount: string
 ): Promise<{
-  routes: any[],
-  bestRoute: any,
-  priceImpact: number,
-  estimatedOutput: string
+  routes: any[];
+  bestRoute: any;
+  priceImpact: number;
+  estimatedOutput: string;
 }> {
   try {
     const quote = await getQuote(inputMint, outputMint, amount);
-    
+
     // Extract market information
     const marketInfos = quote.routesInfos?.[0]?.marketInfos || [];
     const routeDetails = marketInfos.map((market: any) => ({
@@ -99,14 +99,14 @@ export async function getDetailedRouteInfo(
       inputMint: market.inputMint,
       outputMint: market.outputMint,
       liquidityFee: market.liquidityFee,
-      platformFee: market.platformFee
+      platformFee: market.platformFee,
     }));
 
     return {
       routes: routeDetails,
       bestRoute: quote.routesInfos?.[0],
       priceImpact: quote.priceImpactPct,
-      estimatedOutput: quote.outputAmount
+      estimatedOutput: quote.outputAmount,
     };
   } catch (error) {
     console.error('Error getting detailed route info:', error);
@@ -130,32 +130,25 @@ export async function swapTokensToSol(
       NATIVE_SOL,
       amount.toString()
     );
-    
+
     console.log('Detailed swap route:');
     console.log('Markets used:', routeInfo.routes);
     console.log('Price impact:', routeInfo.priceImpact + '%');
     console.log('Estimated output:', routeInfo.estimatedOutput);
 
     console.log(`Getting quote for ${amount} tokens to SOL...`);
-    
+
     // 1. Get quote for the swap
-    const quote = await getQuote(
-      tokenMint.toString(),
-      NATIVE_SOL,
-      amount.toString()
-    );
+    const quote = await getQuote(tokenMint.toString(), NATIVE_SOL, amount.toString());
 
     console.log('Route found:', {
       inputAmount: quote.inputAmount,
       outputAmount: quote.outputAmount,
-      priceImpactPct: quote.priceImpactPct
+      priceImpactPct: quote.priceImpactPct,
     });
 
     // 2. Get the swap transaction
-    const swapResult = await getSwapTransaction(
-      quote,
-      wallet.publicKey.toString()
-    );
+    const swapResult = await getSwapTransaction(quote, wallet.publicKey.toString());
 
     // 3. Deserialize and sign the transaction
     const swapTransaction = VersionedTransaction.deserialize(
@@ -173,7 +166,7 @@ export async function swapTokensToSol(
     return {
       inputAmount: amount,
       outputAmount: BigInt(quote.outputAmount),
-      signature
+      signature,
     };
   } catch (error) {
     console.error('Error in swapTokensToSol:', error);
@@ -191,25 +184,18 @@ export async function swapSolToWBTC(
 ): Promise<SwapResult> {
   try {
     console.log(`Getting quote for ${amount} SOL to WBTC...`);
-    
+
     // 1. Get quote for the swap
-    const quote = await getQuote(
-      NATIVE_SOL,
-      WBTC_MINT,
-      amount.toString()
-    );
+    const quote = await getQuote(NATIVE_SOL, WBTC_MINT, amount.toString());
 
     console.log('Route found:', {
       inputAmount: quote.inputAmount,
       outputAmount: quote.outputAmount,
-      priceImpactPct: quote.priceImpactPct
+      priceImpactPct: quote.priceImpactPct,
     });
 
     // 2. Get the swap transaction
-    const swapResult = await getSwapTransaction(
-      quote,
-      wallet.publicKey.toString()
-    );
+    const swapResult = await getSwapTransaction(quote, wallet.publicKey.toString());
 
     // 3. Deserialize and sign the transaction
     const swapTransaction = VersionedTransaction.deserialize(
@@ -227,7 +213,7 @@ export async function swapSolToWBTC(
     return {
       inputAmount: amount,
       outputAmount: BigInt(quote.outputAmount),
-      signature
+      signature,
     };
   } catch (error) {
     console.error('Error in swapSolToWBTC:', error);
@@ -238,16 +224,12 @@ export async function swapSolToWBTC(
 /**
  * Utility function to check price impact and output amount before swapping
  */
-export async function checkSwapRoute(
-  inputMint: string,
-  outputMint: string,
-  amount: string
-) {
+export async function checkSwapRoute(inputMint: string, outputMint: string, amount: string) {
   const quote = await getQuote(inputMint, outputMint, amount);
   return {
     inputAmount: quote.inputAmount,
     outputAmount: quote.outputAmount,
     priceImpactPct: quote.priceImpactPct,
-    routes: quote.routesInfos
+    routes: quote.routesInfos,
   };
-} 
+}

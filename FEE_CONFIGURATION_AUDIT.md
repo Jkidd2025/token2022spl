@@ -33,7 +33,7 @@ createInitializeTransferFeeConfigInstruction(
 **Recommendation:**
 
 ```typescript
-const MAX_FEE_AMOUNT = BigInt(1_000_000_000); // 1,000 tokens (with 6 decimals)
+const MAX_FEE_AMOUNT = BigInt(1_000_000_000); // 1,000 tokens (with 9 decimals)
 
 createInitializeTransferFeeConfigInstruction(
   mint,

@@ -1,11 +1,28 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   Connection,
   Transaction,
   TransactionSignature,
-  SendTransactionError,
   SimulatedTransactionResponse,
+  RpcResponseAndContext,
+  Keypair,
 } from '@solana/web3.js';
 import { getConfirmationStrategy } from './transactionConfirmation';
+
+export const TRANSACTION_TYPES = {
+  TOKEN_CREATION: 'TOKEN_CREATION',
+  INITIAL_MINT: 'INITIAL_MINT',
+  LARGE_TRANSFER: 'LARGE_TRANSFER',
+  AUTHORITY_CHANGE: 'AUTHORITY_CHANGE',
+  DISTRIBUTION: 'DISTRIBUTION',
+  FEE_COLLECTION: 'FEE_COLLECTION',
+  REGULAR_TRANSFER: 'REGULAR_TRANSFER',
+  BALANCE_CHECK: 'BALANCE_CHECK',
+  SMALL_TRANSFER: 'SMALL_TRANSFER',
+  METADATA_UPDATE: 'METADATA_UPDATE',
+} as const;
+
+export type TransactionType = keyof typeof TRANSACTION_TYPES;
 
 interface RetryConfig {
   maxRetries: number;
@@ -21,7 +38,7 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 
 interface TransactionResult {
   signature: TransactionSignature;
-  simulation: SimulatedTransactionResponse;
+  simulation: RpcResponseAndContext<SimulatedTransactionResponse>;
   retries: number;
 }
 
@@ -37,12 +54,18 @@ export class TransactionManager {
   /**
    * Simulates a transaction before sending
    */
-  private async simulateTransaction(transaction: Transaction): Promise<SimulatedTransactionResponse> {
+  private async simulateTransaction(
+    transaction: Transaction
+  ): Promise<RpcResponseAndContext<SimulatedTransactionResponse>> {
     console.log('Simulating transaction...');
     const simulation = await this.connection.simulateTransaction(transaction);
 
     if (simulation.value.err) {
-      throw new Error(`Transaction simulation failed: ${simulation.value.err}`);
+      console.error(
+        'Transaction simulation failed:',
+        JSON.stringify(simulation.value.err, null, 2)
+      );
+      throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
     }
 
     console.log('Transaction simulation successful');
@@ -54,6 +77,7 @@ export class TransactionManager {
    */
   private async sendWithRetry(
     transaction: Transaction,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     signers: any[],
     confirmationStrategy: any
   ): Promise<TransactionSignature> {
@@ -63,7 +87,9 @@ export class TransactionManager {
 
     while (retryCount < this.retryConfig.maxRetries) {
       try {
-        console.log(`Attempting to send transaction (attempt ${retryCount + 1}/${this.retryConfig.maxRetries})...`);
+        console.log(
+          `Attempting to send transaction (attempt ${retryCount + 1}/${this.retryConfig.maxRetries})...`
+        );
 
         const signature = await this.connection.sendTransaction(transaction, signers);
 
@@ -75,7 +101,9 @@ export class TransactionManager {
           confirmationStrategy.commitment
         );
 
-        console.log(`Transaction sent successfully with ${confirmationStrategy.commitment} commitment`);
+        console.log(
+          `Transaction sent successfully with ${confirmationStrategy.commitment} commitment`
+        );
         return signature;
       } catch (error) {
         lastError = error as Error;
@@ -83,40 +111,34 @@ export class TransactionManager {
 
         if (retryCount < this.retryConfig.maxRetries) {
           console.log(`Transaction failed, retrying in ${delay / 1000} seconds...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           delay *= this.retryConfig.backoffFactor;
         }
       }
     }
 
-    throw new Error(`Transaction failed after ${retryCount} attempts. Last error: ${lastError?.message}`);
+    throw new Error(
+      `Transaction failed after ${retryCount} attempts. Last error: ${lastError?.message}`
+    );
   }
 
   /**
-   * Executes a transaction with simulation and retry logic
+   * Executes a transaction with proper signing and sending logic
    */
   public async executeTransaction(
-    transaction: Transaction,
-    signers: any[],
-    transactionType: keyof typeof TRANSACTION_TYPES
-  ): Promise<TransactionResult> {
+    tx: Transaction,
+    signers: Keypair[],
+    label: string
+  ): Promise<{ signature: TransactionSignature }> {
     try {
-      // 1. Simulate transaction
-      const simulation = await this.simulateTransaction(transaction);
+      const signature = await this.connection.sendTransaction(tx, signers, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
-      // 2. Get confirmation strategy based on transaction type
-      const confirmationStrategy = getConfirmationStrategy(transactionType);
-
-      // 3. Send transaction with retry logic
-      const signature = await this.sendWithRetry(transaction, signers, confirmationStrategy);
-
-      return {
-        signature,
-        simulation,
-        retries: 0, // Will be updated if retries occurred
-      };
+      return { signature };
     } catch (error) {
-      console.error('Transaction execution failed:', error);
+      console.error(`Error executing ${label} transaction:`, error);
       throw error;
     }
   }
@@ -133,7 +155,8 @@ export class TransactionManager {
 
       // Check if transaction is too large
       const size = transaction.serialize().length;
-      if (size > 1232) { // Solana transaction size limit
+      if (size > 1232) {
+        // Solana transaction size limit
         throw new Error(`Transaction too large: ${size} bytes`);
       }
 
@@ -146,4 +169,4 @@ export class TransactionManager {
       return false;
     }
   }
-} 
+}

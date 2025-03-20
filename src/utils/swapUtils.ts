@@ -1,33 +1,11 @@
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  Transaction,
-  VersionedTransaction,
-} from '@solana/web3.js';
-import {
-  TOKEN_2022_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  getAccount,
-  createTransferInstruction,
-} from '@solana/spl-token';
-import {
-  Liquidity,
-  LiquidityPoolKeys,
-  Token,
-  TokenAmount,
-} from '@raydium-io/raydium-sdk';
-import fetch from 'cross-fetch';
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { executeJupiterSwap, getJupiterQuote } from './jupiterApi';
-import { getConfirmationStrategy, isLargeTransfer } from '../utils/transactionConfirmation';
-import { getWBTCAddress, TOKEN_ADDRESSES } from '../config/tokens';
+import { getConfirmationStrategy, isLargeTransfer } from './transactionConfirmation';
+import { getWBTCAddress } from '../config/tokens';
 
-// Raydium Pool ID for your token to SOL
-const YOUR_TOKEN_SOL_POOL = new PublicKey('YOUR_POOL_ID_HERE');
+// Constants for swap operations
 
 // Constants
-const NATIVE_SOL_MINT = TOKEN_ADDRESSES.SOL;
 
 export interface SwapResult {
   inputAmount: bigint;
@@ -44,10 +22,10 @@ export async function swapTokensToSol(
   try {
     // Get quote from Jupiter
     const quote = await getJupiterQuote(tokenMint.toString(), 'SOL', amount.toString());
-    
+
     // Execute swap
     const swapTransaction = await executeJupiterSwap(quote, wallet.publicKey);
-    
+
     // Determine confirmation strategy based on amount
     const confirmationStrategy = isLargeTransfer(amount)
       ? getConfirmationStrategy('LARGE_TRANSFER')
@@ -55,7 +33,8 @@ export async function swapTokensToSol(
 
     // Send transaction
     console.log(`Executing swap with ${confirmationStrategy.commitment} commitment...`);
-    const signature = await connection.sendTransaction(swapTransaction, [wallet]);
+    const signature = await connection.sendTransaction(swapTransaction);
+    swapTransaction.sign([wallet]);
     await connection.confirmTransaction(
       {
         signature,
@@ -67,7 +46,7 @@ export async function swapTokensToSol(
     return {
       inputAmount: amount,
       outputAmount: BigInt(quote.outAmount),
-      signature
+      signature,
     };
   } catch (error) {
     console.error('Error swapping tokens to SOL:', error);
@@ -82,17 +61,18 @@ export async function swapSolToWBTC(
 ): Promise<SwapResult> {
   try {
     // Get quote from Jupiter
-    const quote = await getJupiterQuote('SOL', getWBTCAddress(), amount.toString());
-    
+    const quote = await getJupiterQuote('SOL', getWBTCAddress().toString(), amount.toString());
+
     // Execute swap
     const swapTransaction = await executeJupiterSwap(quote, wallet.publicKey);
-    
+
     // Always use secure confirmation for WBTC swaps
     const confirmationStrategy = getConfirmationStrategy('LARGE_TRANSFER');
 
     // Send transaction
     console.log(`Executing swap with ${confirmationStrategy.commitment} commitment...`);
-    const signature = await connection.sendTransaction(swapTransaction, [wallet]);
+    const signature = await connection.sendTransaction(swapTransaction);
+    swapTransaction.sign([wallet]);
     await connection.confirmTransaction(
       {
         signature,
@@ -104,7 +84,7 @@ export async function swapSolToWBTC(
     return {
       inputAmount: amount,
       outputAmount: BigInt(quote.outAmount),
-      signature
+      signature,
     };
   } catch (error) {
     console.error('Error swapping SOL to WBTC:', error);
@@ -113,7 +93,3 @@ export async function swapSolToWBTC(
 }
 
 // Helper function to get pool info (implement as needed)
-async function getPoolInfo(connection: Connection, poolId: PublicKey): Promise<LiquidityPoolKeys> {
-  // Implement pool info fetching logic
-  throw new Error('Pool info fetching not implemented');
-} 

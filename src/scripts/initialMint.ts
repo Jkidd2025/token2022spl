@@ -101,7 +101,7 @@ async function performInitialMintAndRevoke(
       options?.initialSupply || process.env.INITIAL_SUPPLY || '1000000000'
     );
     const decimals =
-      options?.decimals || process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS!) : 6;
+      options?.decimals || process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS!) : 9;
     const actualSupply = initialSupply * BigInt(10 ** decimals);
 
     console.log(

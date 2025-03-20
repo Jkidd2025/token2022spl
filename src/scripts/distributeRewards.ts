@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Connection,
   Keypair,
@@ -91,7 +92,7 @@ async function distributeRewards(
       TOKEN_2022_PROGRAM_ID
     );
 
-    const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 6;
+    const decimals = process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS) : 9;
     const totalRewardAmount = BigInt(rewardAmount) * BigInt(10 ** decimals);
 
     if (sourceAccountInfo.amount < totalRewardAmount) {

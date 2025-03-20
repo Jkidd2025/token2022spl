@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Connection,
   Keypair,
@@ -88,7 +89,8 @@ export async function withdrawExcessSol(
       const transactionManager = new TransactionManager(connection);
 
       // Determine transaction type based on amount
-      const transactionType = withdrawAmount > LAMPORTS_PER_SOL ? 'LARGE_TRANSFER' : 'SMALL_TRANSFER';
+      const transactionType =
+        withdrawAmount > LAMPORTS_PER_SOL ? 'LARGE_TRANSFER' : 'SMALL_TRANSFER';
 
       // Execute transaction with simulation and retry logic
       const result = await transactionManager.executeTransaction(
@@ -106,4 +108,4 @@ export async function withdrawExcessSol(
     console.error('Error withdrawing excess SOL:', error);
     throw error;
   }
-} 
+}

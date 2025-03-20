@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 interface RetryOptions {
   maxRetries: number;
   timeout: number;
@@ -20,7 +22,11 @@ export async function retry<T>(
   fn: () => Promise<T>,
   options: RetryOptions
 ): Promise<{ result: T; retryCount: number }> {
-  const { maxRetries, timeout, backoff = (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 10000) } = options;
+  const {
+    maxRetries,
+    timeout,
+    backoff = (retryCount) => Math.min(1000 * Math.pow(2, retryCount), 10000),
+  } = options;
   let retryCount = 0;
   let lastError: Error | null = null;
 
@@ -43,11 +49,11 @@ export async function retry<T>(
       }
 
       // Wait before retrying with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, backoff(retryCount)));
+      await new Promise((resolve) => setTimeout(resolve, backoff(retryCount)));
     }
   }
 
   throw new Error(
     `Failed after ${retryCount} retries. Last error: ${lastError?.message || 'Unknown error'}`
   );
-} 
+}

@@ -1,17 +1,28 @@
-import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import { Keypair } from '@solana/web3.js';
 import { getConnection } from '../utils/rpcConnection';
-import fs from 'fs';
-import dotenv from 'dotenv';
 
 dotenv.config();
 
 async function generateAccounts(): Promise<void> {
   try {
-    console.log('Generating new accounts...\n');
+    // Initialize connection and check network
+    const connection = await getConnection();
+    const version = await connection.getVersion();
+    console.log('Connected to Solana network:', process.env.SOLANA_NETWORK);
+    console.log('Node version:', version['solana-core']);
+    console.log('\nGenerating new accounts...\n');
+
+    // Generate Main Wallet Keypair
+    const mainWallet = Keypair.generate();
+    console.log('Main Wallet Generated:');
+    console.log('Address:', mainWallet.publicKey.toString());
+    console.log('Private Key:', JSON.stringify(Array.from(mainWallet.secretKey)));
 
     // Generate Fee Collector Keypair
     const feeCollector = Keypair.generate();
-    console.log('Fee Collector Account Generated:');
+    console.log('\nFee Collector Account Generated:');
     console.log('Address:', feeCollector.publicKey.toString());
     console.log('Private Key:', JSON.stringify(Array.from(feeCollector.secretKey)));
 
@@ -19,18 +30,26 @@ async function generateAccounts(): Promise<void> {
     const envPath = '.env';
     let envContent = fs.readFileSync(envPath, 'utf-8');
 
+    // Update WALLET_PRIVATE_KEY
+    envContent = envContent.replace(
+      /WALLET_PRIVATE_KEY=".*"/,
+      `WALLET_PRIVATE_KEY="${JSON.stringify(Array.from(mainWallet.secretKey))}"  # Main wallet private key`
+    );
+
     // Update FEE_COLLECTOR_PRIVATE_KEY
     envContent = envContent.replace(
       /FEE_COLLECTOR_PRIVATE_KEY=".*"/,
-      `FEE_COLLECTOR_PRIVATE_KEY="${JSON.stringify(Array.from(feeCollector.secretKey))}"`
+      `FEE_COLLECTOR_PRIVATE_KEY="${JSON.stringify(Array.from(feeCollector.secretKey))}"  # Fee collector private key`
+    );
+
+    // Update FEE_COLLECTOR_ADDRESS
+    envContent = envContent.replace(
+      /FEE_COLLECTOR_ADDRESS=".*"/,
+      `FEE_COLLECTOR_ADDRESS="${feeCollector.publicKey.toString()}"  # Your fee collector address after deployment`
     );
 
     fs.writeFileSync(envPath, envContent);
     console.log('\nEnvironment file updated successfully!');
-
-    // Initialize accounts
-    console.log('\nInitializing accounts...');
-    const connection = getConnection();
 
     // Create Associated Token Account for fee collector
     const tokenMint = process.env.TOKEN_MINT;
@@ -40,9 +59,18 @@ async function generateAccounts(): Promise<void> {
     }
 
     console.log('\nSetup Complete! Please save these keys securely.');
-    console.log('\nIMPORTANT: Fund the fee collector account with SOL before using in production!');
+    console.log('\nIMPORTANT:');
+    console.log('1. Fund the main wallet with at least 0.1 SOL before creating the token');
+    console.log('2. Fund the fee collector account with SOL before using in production!');
+    console.log('\nMain Wallet Address:', mainWallet.publicKey.toString());
+    console.log('Fee Collector Address:', feeCollector.publicKey.toString());
   } catch (error) {
-    console.error('Error generating accounts:', error);
+    if (error instanceof Error) {
+      console.error('Error generating accounts:', error.message);
+      console.error('Stack trace:', error.stack);
+    } else {
+      console.error('Error generating accounts:', error);
+    }
     throw error;
   }
 }
