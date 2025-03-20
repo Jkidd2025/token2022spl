@@ -98,7 +98,7 @@ async function performInitialMintAndRevoke(
 
     // Prepare initial mint transaction
     const initialSupply = BigInt(
-      options?.initialSupply || process.env.INITIAL_SUPPLY || '1000000000'
+      options?.initialSupply ?? process.env.INITIAL_SUPPLY ?? '1000000000'
     );
     const decimals =
       options?.decimals || process.env.TOKEN_DECIMALS ? parseInt(process.env.TOKEN_DECIMALS!) : 9;

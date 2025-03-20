@@ -48,25 +48,15 @@ const RPC_ENDPOINTS: RPCEndpoint[] = [
   {
     name: 'Helius',
     url: process.env.HELIUS_API_KEY
-      ? `${process.env.HELIUS_RPC_URL}${process.env.HELIUS_API_KEY}`
+      ? `${process.env.HELIUS_RPC_URL}/?api-key=${process.env.HELIUS_API_KEY}`
       : '',
     priority: 1,
   },
   {
-    name: 'GenesysGo',
-    url: 'https://ssc-dao.genesysgo.net',
-    priority: 2,
-  },
-  {
-    name: 'Serum',
-    url: 'https://solana-api.projectserum.com',
-    priority: 3,
-  },
-  {
     name: 'Solana',
     url: 'https://api.mainnet-beta.solana.com',
-    priority: 4,
-  },
+    priority: 2,
+  }
 ];
 
 /**

@@ -16,7 +16,6 @@ import {
 } from '@solana/spl-token-metadata';
 import { Buffer } from 'buffer';
 
-// Token Metadata Program ID on mainnet
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 export type TokenMetadata = {
@@ -28,30 +27,20 @@ export type TokenMetadata = {
 };
 
 export function validateMetadata(metadata: TokenMetadata): void {
-  if (!metadata.name || metadata.name.length === 0) {
-    throw new Error('Metadata name is required');
-  }
-  if (!metadata.symbol || metadata.symbol.length === 0) {
+  if (!metadata.name || metadata.name.length === 0) throw new Error('Metadata name is required');
+  if (!metadata.symbol || metadata.symbol.length === 0)
     throw new Error('Metadata symbol is required');
-  }
-  if (!metadata.uri || metadata.uri.length === 0) {
-    throw new Error('Metadata uri is required');
-  }
-  if (!metadata.mint) {
-    throw new Error('Metadata mint is required');
-  }
+  if (!metadata.uri || metadata.uri.length === 0) throw new Error('Metadata uri is required');
+  if (!metadata.mint) throw new Error('Metadata mint is required');
   try {
     new PublicKey(metadata.mint);
   } catch (error) {
     throw new Error('Invalid mint public key');
   }
   metadata.additionalMetadata.forEach(([key, value]) => {
-    if (typeof key !== 'string' || key.length === 0) {
+    if (typeof key !== 'string' || key.length === 0)
       throw new Error('Additional metadata key must be a non-empty string');
-    }
-    if (typeof value !== 'string') {
-      throw new Error('Additional metadata value must be a string');
-    }
+    if (typeof value !== 'string') throw new Error('Additional metadata value must be a string');
   });
 }
 
@@ -79,99 +68,72 @@ export async function createTokenMetadata(
   try {
     validateMetadata(metadata);
 
+    // Get the metadata PDA
+    const [metadataPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      TOKEN_METADATA_PROGRAM_ID
+    );
+    console.log('Using metadata PDA:', metadataPDA.toString());
+
+    // Create transaction
     const transaction = new Transaction();
-    const [metadataAddress, bump] = getMetadataAddress(mint);
-    console.log('Metadata account address:', metadataAddress.toString());
-    console.log('Bump seed:', bump);
 
-    // Calculate size and lamports for metadata account
-    const splMetadata: SPLTokenMetadata = {
-      mint,
-      name: metadata.name,
-      symbol: metadata.symbol,
-      uri: metadata.uri,
-      additionalMetadata: metadata.additionalMetadata,
-    };
-    const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(splMetadata).length;
-    const lamports = await connection.getMinimumBalanceForRentExemption(metadataLen);
-    console.log('Metadata size:', metadataLen);
-    console.log('Lamports required:', lamports);
-
-    // Check if metadata account already exists
-    const existingAccount = await connection.getAccountInfo(metadataAddress);
-    if (existingAccount) {
-      throw new Error(`Metadata account already exists at ${metadataAddress.toString()}`);
-    }
-
-    // Create metadata account
+    // Add initialize metadata instruction
     transaction.add(
-      SystemProgram.createAccount({
-        fromPubkey: payer.publicKey,
-        newAccountPubkey: metadataAddress,
-        lamports,
-        space: metadataLen,
+      createInitializeInstruction({
         programId: TOKEN_METADATA_PROGRAM_ID,
+        metadata: metadataPDA,
+        updateAuthority: payer.publicKey,
+        mint,
+        mintAuthority: payer.publicKey,
+        name: metadata.name,
+        symbol: metadata.symbol,
+        uri: metadata.uri,
       })
     );
 
-    // Initialize metadata
-    const initMetadataInstruction = createInitializeInstruction({
-      programId: TOKEN_METADATA_PROGRAM_ID,
-      mint,
-      metadata: metadataAddress,
-      mintAuthority: payer.publicKey,
-      updateAuthority: payer.publicKey,
-      name: metadata.name,
-      symbol: metadata.symbol,
-      uri: metadata.uri,
-    });
-    transaction.add(initMetadataInstruction);
-
     // Add additional metadata fields
     for (const [key, value] of metadata.additionalMetadata) {
-      const updateFieldInstruction = createUpdateFieldInstruction({
-        programId: TOKEN_METADATA_PROGRAM_ID,
-        metadata: metadataAddress,
-        updateAuthority: payer.publicKey,
-        field: key,
-        value,
-      });
-      transaction.add(updateFieldInstruction);
+      transaction.add(
+        createUpdateFieldInstruction({
+          programId: TOKEN_METADATA_PROGRAM_ID,
+          metadata: metadataPDA,
+          updateAuthority: payer.publicKey,
+          field: key,
+          value,
+        })
+      );
     }
 
     // Set recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = payer.publicKey;
 
-    // Simulate transaction
-    console.log('Simulating metadata transaction...');
-    const simulation = await connection.simulateTransaction(transaction, [payer]);
-    if (simulation.value.err) {
-      console.error('Metadata simulation failed:', simulation.value.err);
-      console.error('Simulation logs:', simulation.value.logs);
-      throw new Error(
-        `Metadata creation simulation failed: ${JSON.stringify(simulation.value.err)}`
-      );
-    }
-    console.log('Metadata simulation succeeded:', simulation.value.logs);
+    // Sign transaction
+    transaction.sign(payer);
 
     // Send and confirm transaction
     console.log('Sending metadata transaction...');
-    const signature = await sendAndConfirmTransaction(connection, transaction, [payer], {
-      commitment: 'confirmed',
+    const signature = await connection.sendTransaction(transaction, [payer], {
+      skipPreflight: false,
+      preflightCommitment: 'finalized',
+      maxRetries: 3,
     });
+    console.log('Metadata transaction sent:', signature);
 
-    // Verify transaction confirmation
-    try {
-      await connection.confirmTransaction(
-        { signature, blockhash, lastValidBlockHeight },
-        'confirmed'
-      );
-      console.log('Metadata transaction confirmed:', signature);
-    } catch (error) {
-      console.error('Transaction confirmation error:', error);
-      throw error;
+    // Wait for confirmation
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      },
+      'finalized'
+    );
+
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
     }
 
     return signature;

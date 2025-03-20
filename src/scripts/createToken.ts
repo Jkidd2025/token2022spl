@@ -76,18 +76,26 @@ async function backupAccount(keypair: Keypair, label: string): Promise<TokenBack
 
 async function createToken(): Promise<TokenMintInfo> {
   try {
+    console.log('Starting token creation process...');
     validateEnvironment();
+    console.log('Environment validation passed');
+
     const connection = new Connection(process.env.SOLANA_RPC_URL!, {
       commitment: 'confirmed',
       confirmTransactionInitialTimeout: 60000,
     });
+    console.log('Connected to Solana network');
 
     const wallet = Keypair.fromSecretKey(
       new Uint8Array(JSON.parse(process.env.WALLET_PRIVATE_KEY!))
     );
+    console.log('Wallet:', wallet.publicKey.toBase58());
+    console.log('Wallet secret key length:', wallet.secretKey.length);
+
     const feeCollectorKeypair = Keypair.fromSecretKey(
       new Uint8Array(JSON.parse(process.env.FEE_COLLECTOR_PRIVATE_KEY!))
     );
+    console.log('Fee collector:', feeCollectorKeypair.publicKey.toBase58());
     const mint = Keypair.generate();
     const decimals = 9;
     const feeBasisPoints = parseInt(process.env.TRANSFER_FEE_BASIS_POINTS!, 10);
@@ -96,7 +104,6 @@ async function createToken(): Promise<TokenMintInfo> {
     const mintLen = getMintLen(extensions);
     const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
 
-    console.log('Wallet:', wallet.publicKey.toBase58());
     console.log('Mint:', mint.publicKey.toBase58());
     console.log('Mint length with extensions:', mintLen);
     console.log('Decimals:', decimals);
@@ -111,14 +118,17 @@ async function createToken(): Promise<TokenMintInfo> {
       await connection.getLatestBlockhash();
 
     // Step 1: Create token metadata
-    const metadataPDA = PublicKey.findProgramAddressSync(
+    const [metadataPDA, bump] = PublicKey.findProgramAddressSync(
       [
         Buffer.from('metadata'),
         new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s').toBuffer(),
         mint.publicKey.toBuffer(),
       ],
       new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s')
-    )[0];
+    );
+    console.log('Metadata PDA:', metadataPDA.toBase58());
+    console.log('Bump seed:', bump);
+
     const metadata: TokenMetadata = {
       mint: mint.publicKey,
       name: 'BPay',
@@ -146,7 +156,7 @@ async function createToken(): Promise<TokenMintInfo> {
     );
     console.log('Token metadata initialized:', metadataSignature);
 
-    // Step 2: Create and initialize mint with extensions in one transaction
+    // Step 2: Create and initialize mint with extensions
     const tx1 = new Transaction().add(
       SystemProgram.createAccount({
         fromPubkey: wallet.publicKey,
@@ -160,7 +170,7 @@ async function createToken(): Promise<TokenMintInfo> {
         wallet.publicKey,
         wallet.publicKey,
         feeBasisPoints,
-        BigInt(1000) * BigInt(10 ** decimals), // Reasonable max fee
+        BigInt(1000) * BigInt(10 ** decimals),
         TOKEN_2022_PROGRAM_ID
       ),
       createInitializeMetadataPointerInstruction(
@@ -191,7 +201,7 @@ async function createToken(): Promise<TokenMintInfo> {
 
     console.log('Creating and initializing mint...');
     const sig1 = await sendAndConfirmTransaction(connection, tx1, [wallet, mint], {
-      commitment: 'confirmed',
+      commitment: 'finalized',
     });
     console.log('Mint created and initialized:', sig1);
 
@@ -199,12 +209,12 @@ async function createToken(): Promise<TokenMintInfo> {
     const mintAccount = await connection.getAccountInfo(mint.publicKey);
     if (!mintAccount) throw new Error('Mint account not found after initialization');
     console.log('Mint account state:', {
-      owner: mintAccount.owner.toBase58(),
-      lamports: mintAccount.lamports,
-      dataLength: mintAccount.data.length,
+      owner: mintAccount?.owner.toBase58(),
+      lamports: mintAccount?.lamports,
+      dataLength: mintAccount?.data.length,
     });
 
-    // Transaction 2: Create fee collector ATA
+    // Step 3: Create fee collector ATA
     const feeCollectorAta = await getAssociatedTokenAddress(
       mint.publicKey,
       feeCollectorKeypair.publicKey,
@@ -224,112 +234,37 @@ async function createToken(): Promise<TokenMintInfo> {
     tx2.feePayer = wallet.publicKey;
     const sig2 = await transactionManager.executeTransaction(tx2, [wallet], 'CREATE_FEE_ATA');
     console.log('Fee collector ATA created:', sig2);
-
-    // Transaction 3: Create wallet ATA
+    // Step 4: Create wallet ATA
     const walletAta = await getAssociatedTokenAddress(
       mint.publicKey,
       wallet.publicKey,
       true,
       TOKEN_2022_PROGRAM_ID
     );
-    const tx3 = new Transaction().add(
-      createAssociatedTokenAccountInstruction(
-        wallet.publicKey,
-        walletAta,
-        wallet.publicKey,
-        mint.publicKey,
-        TOKEN_2022_PROGRAM_ID
-      )
-    );
-    tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx3.feePayer = wallet.publicKey;
-    const sig3 = await transactionManager.executeTransaction(tx3, [wallet], 'CREATE_WALLET_ATA');
-    console.log('Wallet ATA created:', sig3);
 
-    // Transaction 4: Mint initial supply
-    const initialSupply = BigInt(process.env.INITIAL_SUPPLY || '1000');
-    const actualSupply = initialSupply * BigInt(10 ** decimals);
-    console.log('Initial supply:', initialSupply.toString());
-    console.log('Actual supply with decimals:', actualSupply.toString());
-    const tx4 = new Transaction().add(
-      createMintToInstruction(
-        mint.publicKey,
-        walletAta,
-        wallet.publicKey,
-        actualSupply,
-        [],
-        TOKEN_2022_PROGRAM_ID
-      )
-    );
-    tx4.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx4.feePayer = wallet.publicKey;
-
-    console.log('Simulating minting initial supply...');
-    const sim4 = await connection.simulateTransaction(tx4, [wallet]);
-    if (sim4.value.err) {
-      console.error('Simulation failed:', sim4.value.err);
-      console.error('Simulation logs:', sim4.value.logs);
-      throw new Error('Mint initial supply simulation failed');
-    }
-    console.log('Simulation succeeded:', sim4.value.logs);
-
-    console.log('Minting initial supply...');
-    const sig4 = await transactionManager.executeTransaction(tx4, [wallet], 'MINT_INITIAL');
-    console.log('Initial supply minted:', sig4);
-
-    // Transaction 5: Revoke minting authority
-    const tx5 = new Transaction().add(
-      createSetAuthorityInstruction(
-        mint.publicKey,
-        wallet.publicKey,
-        AuthorityType.MintTokens,
-        null,
-        [],
-        TOKEN_2022_PROGRAM_ID
-      )
-    );
-    tx5.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx5.feePayer = wallet.publicKey;
-
-    console.log('Simulating revoking minting authority...');
-    const sim5 = await connection.simulateTransaction(tx5, [wallet]);
-    if (sim5.value.err) {
-      console.error('Simulation failed:', sim5.value.err);
-      console.error('Simulation logs:', sim5.value.logs);
-      throw new Error('Revoke minting authority simulation failed');
-    }
-    console.log('Simulation succeeded:', sim5.value.logs);
-
-    console.log('Revoking minting authority...');
-    const sig5 = await transactionManager.executeTransaction(tx5, [wallet], 'REVOKE_MINT');
-    console.log('Minting authority revoked:', sig5);
-
-    const mintInfo: TokenMintInfo = {
-      address: mint.publicKey.toString(),
+    // Return the token mint info
+    return {
+      address: mint.publicKey.toBase58(),
       decimals,
       extensions: extensions.map((ext) => ExtensionType[ext]),
-      feeCollector: feeCollectorAta.toString(),
+      feeCollector: feeCollectorKeypair.publicKey.toBase58(),
     };
-
-    await backupAccount(mint, 'mint');
-    await backupAccount(feeCollectorKeypair, 'fee_collector');
-    process.env.TOKEN_MINT = mint.publicKey.toBase58();
-
-    console.log('Token created successfully:', mintInfo);
-    return mintInfo;
-  } catch (error: unknown) {
-    console.error('Error:', error instanceof Error ? error.message : String(error));
-    if (error && typeof error === 'object' && 'logs' in error) {
-      console.error('Transaction logs:', (error as any).logs);
-    }
+  } catch (error) {
+    console.error('Error in createToken:', error);
     throw error;
   }
 }
 
-if (require.main === module) {
-  createToken()
-    .then((result) => console.log('Success:', result))
-    .catch((error) => console.error('Failed:', error));
+async function main() {
+  try {
+    console.log('Starting token creation process...');
+    const tokenInfo = await createToken();
+    console.log('Token creation completed successfully:', tokenInfo);
+  } catch (error) {
+    console.error('Failed to create token:', error);
+    process.exit(1);
+  }
 }
 
-export { createToken, TokenMintInfo, TokenBackup };
+// Call the main function
+main();
