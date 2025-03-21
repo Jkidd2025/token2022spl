@@ -29,4 +29,15 @@ build/
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Key files
+keys/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/config/*.json
+
+# Coverage
+coverage/ 
