@@ -37,8 +37,12 @@ import {
 import * as dotenv from 'dotenv';
 import { TransactionManager } from '../utils/transactionManager';
 import { TOKEN_CONSTANTS } from '../config/tokens';
+import { metadata as tokenMetadata, validateTokenAddresses } from '../config/tokens';
+import { createTokenMetadata, validateMetadata } from '../utils/metadata';
+import { resolve } from 'path';
 
-dotenv.config();
+// Load environment variables from .env file
+dotenv.config({ path: resolve(__dirname, '../../.env') });
 
 // Constants
 const METADATA_SEED = 'metadata';
@@ -59,6 +63,7 @@ interface TokenMintInfo {
   decimals: number;
   rewardsPool: string;
   operationsWallet: string;
+  metadata: string;
 }
 
 interface TransactionError extends Error {
@@ -123,6 +128,7 @@ async function createToken(): Promise<TokenMintInfo> {
   try {
     console.log('Starting token creation process...');
     validateEnvironment();
+    validateTokenAddresses();
     console.log('Environment validation passed');
 
     const connection = new Connection(process.env.SOLANA_RPC_URL!, {
@@ -239,28 +245,46 @@ async function createToken(): Promise<TokenMintInfo> {
     );
     console.log('Token accounts created:', sig2);
 
-    // Step 3: Disable mint authority
-    const tx3 = new Transaction().add(
-      createSetAuthorityInstruction(
+    // Step 3: Create token metadata
+    console.log('Creating token metadata...');
+    const metadataSignature = await createTokenMetadata(
+      connection,
+      wallet,
+      mint.publicKey,
+      {
+        name: tokenMetadata.name,
+        symbol: tokenMetadata.symbol,
+        uri: tokenMetadata.uri,
+        mint: mint.publicKey,
+        additionalMetadata: [],
+      },
+      false  // Set isMutable to false
+    );
+    console.log('Token metadata created:', metadataSignature);
+
+    // Step 4: Mint initial supply to operations wallet
+    const initialSupply = BigInt(TOKEN_CONSTANTS.INITIAL_SUPPLY * (10 ** TOKEN_CONSTANTS.DECIMALS));
+    const tx4 = new Transaction().add(
+      createMintToInstruction(
         mint.publicKey,
+        operationsWalletATA,
         wallet.publicKey,
-        AuthorityType.MintTokens,
-        null,
+        Number(initialSupply),
         [],
         TOKEN_PROGRAM_ID
       )
     );
 
-    tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    tx3.feePayer = wallet.publicKey;
+    tx4.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    tx4.feePayer = wallet.publicKey;
 
-    console.log('Disabling mint authority...');
-    const sig3 = await executeWithRetry(() =>
-      sendAndConfirmTransaction(connection, tx3, [wallet], {
+    console.log('Minting initial supply to operations wallet...');
+    const sig4 = await executeWithRetry(() =>
+      sendAndConfirmTransaction(connection, tx4, [wallet], {
         commitment: 'finalized',
       })
     );
-    console.log('Mint authority disabled:', sig3);
+    console.log('Initial supply minted:', sig4);
 
     // Backup mint account
     await backupAccount(mint, 'mint');
@@ -270,6 +294,7 @@ async function createToken(): Promise<TokenMintInfo> {
       decimals,
       rewardsPool: rewardsPoolATA.toBase58(),
       operationsWallet: operationsWalletATA.toBase58(),
+      metadata: metadataSignature,
     };
   } catch (error) {
     console.error('Failed to create token:', error);

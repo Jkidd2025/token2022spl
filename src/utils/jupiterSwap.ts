@@ -38,11 +38,16 @@ async function getQuote(
       amount,
       slippageBps: slippageBps.toString(),
       feeBps: '4', // 0.04% fee for Jupiter
+      onlyDirectRoutes: 'false',
+      asLegacyTransaction: 'false',
+      computeUnitPriceMicroLamports: '0',
+      maxAccounts: '64'
     });
 
     const response = await fetch(`${JUPITER_QUOTE_API}/quote?${params}`);
     if (!response.ok) {
-      throw new Error(`Quote failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Quote failed: ${response.statusText} - ${errorText}`);
     }
     return await response.json();
   } catch (error) {
@@ -124,11 +129,14 @@ export async function swapTokensToSol(
   amount: bigint
 ): Promise<SwapResult> {
   try {
+    // Convert amount to string with proper decimal places
+    const amountString = amount.toString();
+
     // Get and log detailed route information
     const routeInfo = await getDetailedRouteInfo(
       tokenMint.toString(),
       NATIVE_SOL,
-      amount.toString()
+      amountString
     );
 
     console.log('Detailed swap route:');
@@ -136,10 +144,10 @@ export async function swapTokensToSol(
     console.log('Price impact:', routeInfo.priceImpact + '%');
     console.log('Estimated output:', routeInfo.estimatedOutput);
 
-    console.log(`Getting quote for ${amount} tokens to SOL...`);
+    console.log(`Getting quote for ${amountString} tokens to SOL...`);
 
     // 1. Get quote for the swap
-    const quote = await getQuote(tokenMint.toString(), NATIVE_SOL, amount.toString());
+    const quote = await getQuote(tokenMint.toString(), NATIVE_SOL, amountString);
 
     console.log('Route found:', {
       inputAmount: quote.inputAmount,

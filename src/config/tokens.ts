@@ -3,25 +3,17 @@ import { TokenMetadata } from '../utils/metadata';
 
 // Token mint addresses
 export const TOKEN_ADDRESSES = {
-  WBTC: process.env.WBTC_MINT_ADDRESS || '', // Will be set via environment variable
+  WBTC: process.env.WBTC_MINT_ADDRESS || '3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh', // Mainnet WBTC address
   SOL: 'So11111111111111111111111111111111111111112', // Wrapped SOL
 } as const;
 
 // Helper function to get WBTC mint address
 export function getWBTCAddress(): PublicKey {
-  if (!TOKEN_ADDRESSES.WBTC) {
-    throw new Error(
-      'WBTC mint address not configured. Please set WBTC_MINT_ADDRESS environment variable.'
-    );
-  }
   return new PublicKey(TOKEN_ADDRESSES.WBTC);
 }
 
 // Validate token addresses
 export function validateTokenAddresses(): void {
-  if (!TOKEN_ADDRESSES.WBTC) {
-    throw new Error('WBTC mint address is required but not configured');
-  }
   try {
     new PublicKey(TOKEN_ADDRESSES.WBTC);
   } catch (error) {
@@ -45,6 +37,7 @@ export const metadata: TokenMetadata = {
 // Token constants
 export const TOKEN_CONSTANTS = {
   DECIMALS: 9,
+  INITIAL_SUPPLY: 1_000_000_000, // 1 billion tokens
   DEFAULT_TRANSFER_FEE_BASIS_POINTS: 500,
   MIN_SOL_BALANCE: 0.02,
   MAX_RETRIES: 3,

@@ -1,7 +1,7 @@
 {
   "name": "BPay",
   "symbol": "BPAY",
-  "description": "BPay (BPAY) is the Next Generation WBTC Rewards Token on Solana. Features include automated WBTC rewards distribution every 30 minutes, 5% transfer fee with 50% to WBTC rewards pool, and built on the advanced Token-2022 standard for enhanced functionality and security.",
+  "description": "BPay (BPAY) is the Next Generation WBTC Rewards Token on Solana. Features include automated WBTC rewards distribution every 30 minutes, 5% transfer fee with 50% to WBTC rewards pool, and built on the standard SPL token program for enhanced functionality and security.",
   "image": "https://ipfs.io/ipns/k51qzi5uqu5dm8e8ha6oxwhekeqz8iemc8xk2mok4u73borphn81u5bbzvb66s",
   "external_url": "https://bpaycrypto.com",
   "uri": "https://ipfs.io/ipns/k51qzi5uqu5dm8e8ha6oxwhekeqz8iemc8xk2mok4u73borphn81u5bbzvb66s/metadata.json",
@@ -10,7 +10,7 @@
   "attributes": [
     {
       "trait_type": "Token Standard",
-      "value": "SPL-2022"
+      "value": "SPL"
     },
     {
       "trait_type": "Transfer Fee",

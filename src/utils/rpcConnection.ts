@@ -25,39 +25,63 @@ interface TransactionResult {
   };
 }
 
-// Default confirmation options for different security levels
-export const CONFIRMATION_STRATEGY = {
-  FAST: {
-    commitment: 'processed' as Commitment,
-    timeout: 30000, // 30 seconds
-    preflightCommitment: 'processed' as Commitment,
-  },
-  STANDARD: {
-    commitment: 'confirmed' as Commitment,
-    timeout: 60000, // 60 seconds
-    preflightCommitment: 'confirmed' as Commitment,
-  },
-  SECURE: {
-    commitment: 'finalized' as Commitment,
-    timeout: 90000, // 90 seconds
-    preflightCommitment: 'finalized' as Commitment,
-  },
-};
-
 const RPC_ENDPOINTS: RPCEndpoint[] = [
   {
     name: 'Helius',
     url: process.env.HELIUS_API_KEY
-      ? `${process.env.HELIUS_RPC_URL}/?api-key=${process.env.HELIUS_API_KEY}`
+      ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
       : '',
     priority: 1,
   },
   {
-    name: 'Solana',
-    url: 'https://api.mainnet-beta.solana.com',
+    name: 'Backup RPC',
+    url: process.env.BACKUP_RPC_URL || 'https://api.mainnet-beta.solana.com',
     priority: 2,
   },
+  {
+    name: 'Solana',
+    url: 'https://api.mainnet-beta.solana.com',
+    priority: 3,
+  },
 ];
+
+// Default confirmation options for different security levels
+export const CONFIRMATION_STRATEGY = {
+  FAST: {
+    commitment: 'processed' as Commitment,
+    timeout: 120000, // 120 seconds
+    preflightCommitment: 'processed' as Commitment,
+  },
+  STANDARD: {
+    commitment: 'confirmed' as Commitment,
+    timeout: 180000, // 180 seconds
+    preflightCommitment: 'confirmed' as Commitment,
+  },
+  SECURE: {
+    commitment: 'finalized' as Commitment,
+    timeout: 240000, // 240 seconds
+    preflightCommitment: 'finalized' as Commitment,
+  },
+};
+
+// Mainnet specific confirmation strategies
+export const MAINNET_CONFIRMATION_STRATEGY = {
+  LARGE_TRANSFER: {
+    commitment: 'finalized' as Commitment,
+    timeout: 240000, // 240 seconds
+    preflightCommitment: 'finalized' as Commitment,
+  },
+  SMALL_TRANSFER: {
+    commitment: 'confirmed' as Commitment,
+    timeout: 180000, // 180 seconds
+    preflightCommitment: 'confirmed' as Commitment,
+  },
+  DEFAULT: {
+    commitment: 'confirmed' as Commitment,
+    timeout: 180000, // 180 seconds
+    preflightCommitment: 'confirmed' as Commitment,
+  },
+};
 
 /**
  * Creates a connection with the specified endpoint and confirmation strategy

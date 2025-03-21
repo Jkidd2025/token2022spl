@@ -41,7 +41,7 @@ async function verifyMainnetConfiguration(): Promise<ConfigurationError[]> {
     if (!process.env.HELIUS_API_KEY) {
       throw new Error('HELIUS_API_KEY is not defined');
     }
-    const connection = new Connection(process.env.HELIUS_RPC_URL + process.env.HELIUS_API_KEY);
+    const connection = new Connection(`${process.env.HELIUS_RPC_URL}/?api-key=${process.env.HELIUS_API_KEY}`);
     const isHealthy = await validateConnection(connection, 'finalized');
     if (!isHealthy) {
       errors.push({

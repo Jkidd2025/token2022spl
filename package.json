@@ -10,6 +10,7 @@
     "prebuild": "npm run clean",
     "start": "ts-node src/scripts/createToken.ts",
     "create-token": "ts-node src/scripts/createToken.ts",
+    "disable-mint": "ts-node src/scripts/disableMint.ts",
     "initial-mint": "ts-node src/scripts/initialMint.ts",
     "burn": "ts-node src/scripts/burnTokens.ts",
     "distribute-rewards": "ts-node src/scripts/distributeRewards.ts",
@@ -31,6 +32,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@metaplex-foundation/mpl-token-metadata": "^2.13.0",
     "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
     "@solana/buffer-layout": "^4.0.1",
     "@solana/spl-token": "^0.4.13",
@@ -39,7 +41,7 @@
     "bn.js": "^5.2.1",
     "bs58": "^5.0.0",
     "cross-fetch": "^4.1.0",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.7",
     "node-cron": "^3.0.3"
   },
   "devDependencies": {
